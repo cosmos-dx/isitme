@@ -6,12 +6,17 @@ semantic memories, and learned profile — to any MCP-capable LLM host (Cursor,
 Claude Desktop, etc.).
 
 It is a thin, typed bridge: every tool calls the local **Web API / BFF**
-(default `http://127.0.0.1:5050`) authenticated with your `X-API-Key`. No brain
-logic lives here — the Web API owns auth and the Core Brain owns cognition.
+(default `http://127.0.0.1:5050`) authenticated with a **Google OAuth token**
+(`Authorization: Bearer <id_token>`). No brain logic lives here — the Web API
+owns auth and the Core Brain owns cognition.
 
 ```
-LLM host (Cursor / Claude) ──stdio/http──> brain-mcp ──X-API-Key──> Web API (5050) ──> Core Brain
+LLM host (Cursor / Claude) ──stdio/http──> brain-mcp ──Bearer <google id_token>──> Web API (5050) ──> Core Brain
 ```
+
+Authentication is a **one-time interactive Google sign-in** (`python -m
+brain_mcp login`). Tokens are cached at `~/.isitme/credentials.json` (chmod
+`600`) and **refreshed automatically** — there is no API key to manage.
 
 ## Tools
 
