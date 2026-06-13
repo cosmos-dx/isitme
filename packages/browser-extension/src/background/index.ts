@@ -34,6 +34,7 @@ import { TabTracker } from "./tracking";
 const SOURCE = "browser-extension";
 const CLIENT_VERSION = chrome.runtime.getManifest().version;
 const FLUSH_ALARM = "isitme.flush";
+const SYNC_ALARM = "isitme.sync";
 
 const queue = new EventQueue(1000);
 const tracker = new TabTracker();
@@ -185,20 +186,45 @@ async function flush(): Promise<void> {
   }
 }
 
+// ---- periodic sync (every 5 min): re-auth + full drain + usage refresh -----
+
+async function syncSelf(): Promise<void> {
+  const config = await getConfig();
+
+  // 1. Re-validate / silently refresh the Google token.
+  const auth = await resolveIngestAuth(config);
+  const valid = Boolean(auth.bearer || auth.apiKey);
+  await patchRuntime({
+    apiKeyValid: valid,
+    lastError: valid ? null : "Not signed in — open the popup and sign in.",
+  });
+
+  // 2. Flush all queued events.
+  await flush();
+
+  // 3. Pull server-side usage (non-blocking failure).
+  if (valid) {
+    void fetchUsage(config.apiBaseUrl, auth);
+  }
+}
+
 // ---- lifecycle --------------------------------------------------------------
 
 chrome.runtime.onInstalled.addListener(async () => {
   await getConfig(); // materialize defaults
   chrome.alarms.create(FLUSH_ALARM, { periodInMinutes: 0.5 });
+  chrome.alarms.create(SYNC_ALARM, { periodInMinutes: 5 });
   await reinjectOpenTabs();
 });
 
 chrome.runtime.onStartup.addListener(() => {
   chrome.alarms.create(FLUSH_ALARM, { periodInMinutes: 0.5 });
+  chrome.alarms.create(SYNC_ALARM, { periodInMinutes: 5 });
 });
 
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === FLUSH_ALARM) void flush();
+  if (alarm.name === SYNC_ALARM) void syncSelf();
 });
 
 chrome.idle.setDetectionInterval(60);
