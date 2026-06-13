@@ -91,32 +91,23 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.add_middleware(
         CORSMiddleware,
         allow_origins=[settings.frontend_origin],
+        allow_origin_regex=_EXTENSION_ORIGIN_REGEX,
         allow_credentials=True,
         allow_methods=["*"],
-        allow_headers=["*"],
+        allow_headers=["*", "X-API-Key", "Content-Type", "Authorization"],
     )
 
     # --- dependencies -------------------------------------------------------
-    def get_engine(request: Request):
-        return request.app.state.engine
-
     def get_brain(request: Request) -> BrainClient:
         return request.app.state.brain
 
     def get_llm(request: Request) -> LLMHelper:
         return request.app.state.llm
 
-    async def current_user(request: Request) -> dict[str, Any] | None:
-        user_id = request.session.get("user_id")
-        if not user_id:
-            return None
-        return await repository.get_user(request.app.state.engine, user_id)
-
-    async def require_user(request: Request) -> dict[str, Any]:
-        user = await current_user(request)
-        if not user:
-            raise HTTPException(status_code=401, detail="Not authenticated")
-        return user
+    # Session-only guard (browser) and combined session-or-API-key guard.
+    current_user = auth.current_user
+    require_user = auth.require_user
+    require_auth = auth.require_auth
 
     async def proxy_brain(coro):
         try:
@@ -157,8 +148,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         sub = userinfo.get("sub")
         if not sub:
             return RedirectResponse(f"{settings.frontend_origin}/?auth_error=1")
-        user_id = await repository.upsert_user(
-            request.app.state.engine,
+        user_id = await request.app.state.store.upsert_user(
             google_sub=sub,
             email=userinfo.get("email"),
             name=userinfo.get("name"),
@@ -194,8 +184,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         user: dict[str, Any] = Depends(require_user),
     ) -> ApiKeyCreatedOut:
         generated = generate_api_key()
-        meta = await repository.create_api_key(
-            request.app.state.engine, user["id"], body.name, generated
+        meta = await request.app.state.store.create_api_key(
+            user["id"], body.name, generated
         )
         return ApiKeyCreatedOut(**meta, key=generated.plaintext)
 
@@ -203,17 +193,32 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def list_keys(
         request: Request, user: dict[str, Any] = Depends(require_user)
     ) -> list[ApiKeyOut]:
-        rows = await repository.list_api_keys(request.app.state.engine, user["id"])
+        rows = await request.app.state.store.list_api_keys(user["id"])
         return [ApiKeyOut(**row) for row in rows]
 
     @app.delete("/api/keys/{key_id}")
     async def delete_key(
         key_id: str, request: Request, user: dict[str, Any] = Depends(require_user)
     ) -> dict:
-        ok = await repository.revoke_api_key(request.app.state.engine, user["id"], key_id)
+        ok = await request.app.state.store.revoke_api_key(user["id"], key_id)
         if not ok:
             raise HTTPException(status_code=404, detail="Key not found")
         return {"ok": True, "id": key_id, "revoked": True}
+
+    @app.get("/api/keys/validate", response_model=ValidateKeyResponse)
+    async def validate_key(
+        user: dict[str, Any] = Depends(auth.require_api_key),
+    ) -> ValidateKeyResponse:
+        """Verify a presented ``X-API-Key`` and echo the owning user."""
+        return ValidateKeyResponse(
+            valid=True,
+            user=UserOut(
+                id=user["id"],
+                email=user.get("email"),
+                name=user.get("name"),
+                picture=user.get("picture"),
+            ),
+        )
 
     # --- MCP config ---------------------------------------------------------
     @app.get("/api/mcp-config", response_model=McpConfigResponse)
