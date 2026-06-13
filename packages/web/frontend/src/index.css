@@ -66,4 +66,18 @@
       linear-gradient(to bottom, rgba(255, 255, 255, 0.035) 1px, transparent 1px);
     background-size: 64px 64px;
   }
+
+  .md-body p { @apply mb-2 last:mb-0; }
+  .md-body strong { @apply font-semibold text-neutral-200; }
+  .md-body code { @apply rounded bg-white/10 px-1 py-0.5 font-mono text-xs text-neutral-300; }
+  .md-body pre { @apply my-2 overflow-auto rounded-lg border border-white/[0.06] bg-ink-950 p-3; }
+  .md-body pre code { @apply bg-transparent p-0; }
+  .md-body ul, .md-body ol { @apply mb-2 ml-4 space-y-1; }
+  .md-body ul { @apply list-disc; }
+  .md-body ol { @apply list-decimal; }
+  .md-body li { @apply text-neutral-300; }
+  .md-body h1, .md-body h2, .md-body h3, .md-body h4 { @apply mb-1 mt-3 font-medium text-neutral-100; }
+  .md-body a { @apply text-accent-soft underline decoration-accent/30 hover:decoration-accent/60; }
+  .md-body blockquote { @apply my-2 border-l-2 border-accent/30 pl-3 italic text-neutral-400; }
+  .md-body hr { @apply my-3 border-white/[0.08]; }
 }

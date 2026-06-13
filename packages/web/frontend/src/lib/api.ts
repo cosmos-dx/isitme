@@ -7,6 +7,7 @@ import type {
   McpConfig,
   MeResponse,
   Profile,
+  SearchResponse,
   Stats,
 } from "./types";
 
@@ -80,4 +81,9 @@ export const api = {
       body: JSON.stringify({ question, k }),
     }),
   extensionUsage: () => request<ExtensionUsage>("/api/extension/usage"),
+  search: (query: string, k = 10) =>
+    request<SearchResponse>("/api/search", {
+      method: "POST",
+      body: JSON.stringify({ query, k }),
+    }),
 };

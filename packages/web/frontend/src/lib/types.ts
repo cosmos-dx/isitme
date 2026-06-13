@@ -99,3 +99,14 @@ export interface ExtensionUsage {
   last_sync: string | null;
   active_days: number | null;
 }
+
+export interface SearchResult {
+  id: string;
+  text: string;
+  score: number;
+  metadata: Record<string, unknown>;
+}
+
+export interface SearchResponse {
+  results: SearchResult[];
+}
