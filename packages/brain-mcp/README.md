@@ -44,45 +44,78 @@ python3.13 -m venv .venv
 .venv/bin/python -m pip install -e '.[dev]'   # for tests/lint
 ```
 
+## Sign in (one-time)
+
+Authenticate once with Google; tokens are cached and refreshed automatically.
+
+```bash
+.venv/bin/python -m brain_mcp login
+```
+
+This opens your browser to Google sign-in, captures the result on a **loopback
+redirect** (`http://127.0.0.1:8765/callback` by default), exchanges the code for
+tokens, and writes them to `~/.isitme/credentials.json` (chmod `600`). The MCP
+server then attaches `Authorization: Bearer <id_token>` to every Web-API call
+and **refreshes** the token via Google when it expires.
+
+> **Google Cloud setup (one-time):** the loopback redirect URI must be
+> registered on the OAuth **web** client referenced by `OAUTH_CLIENT_JSON` in the
+> repo-root `.env`:
+>
+> 1. **Google Cloud Console → APIs & Services → Credentials** → open that OAuth
+>    client.
+> 2. Under **Authorized redirect URIs**, add `http://127.0.0.1:8765/callback`
+>    (or whatever `BRAIN_OAUTH_REDIRECT_PORT` you choose). Web clients require an
+>    **exact** match, so the port is fixed — or switch the client type to
+>    **Desktop app**, which allows any loopback port.
+> 3. The OAuth consent screen is in **Testing**, so add your Google account
+>    under **OAuth consent screen → Test users**.
+> 4. Ensure the **openid / email / profile** scopes are enabled (the default
+>    consent set).
+>
+> The CLI reads the `client_id` **and** `client_secret` from `OAUTH_CLIENT_JSON`
+> (the same value the Web API uses) to exchange the code; the Web API itself only
+> exposes the non-secret `client_id` at `GET /auth/oauth-config`.
+
 ## Configure
 
-The only **required** setting is your API key. Create one in the isitme
-dashboard (**API Keys** panel) and expose it to the server:
+There are **no required secrets** — auth is the cached Google login above. All
+knobs are optional with safe localhost defaults:
 
-| Env var | Required | Default | Notes |
-| --- | --- | --- | --- |
-| `BRAIN_API_KEY` | ✅ | — | Plaintext `X-API-Key`. |
-| `BRAIN_API_BASE` | | `http://127.0.0.1:5050` | Web API base URL (`BRAIN_BASE_URL` is an alias). |
-| `BRAIN_API_TIMEOUT` | | `20` | Per-request timeout (seconds). |
-| `BRAIN_MCP_TRANSPORT` | | `stdio` | `stdio` \| `sse` \| `streamable-http`. |
-| `BRAIN_MCP_HOST` / `BRAIN_MCP_PORT` | | `127.0.0.1` / `8088` | Bind address for HTTP transports. |
-| `BRAIN_MCP_SKIP_VALIDATION` | | off | Skip the startup key handshake (offline/dev). |
+| Env var | Default | Notes |
+| --- | --- | --- |
+| `BRAIN_API_BASE` | `http://127.0.0.1:5050` | Web API base URL (`BRAIN_BASE_URL` is an alias). |
+| `BRAIN_API_TIMEOUT` | `20` | Per-request timeout (seconds). |
+| `BRAIN_CREDENTIALS_PATH` | `~/.isitme/credentials.json` | Where the OAuth token cache lives. |
+| `BRAIN_OAUTH_REDIRECT_PORT` | `8765` | Loopback port for the `login` redirect. |
+| `BRAIN_MCP_TRANSPORT` | `stdio` | `stdio` \| `sse` \| `streamable-http`. |
+| `BRAIN_MCP_HOST` / `BRAIN_MCP_PORT` | `127.0.0.1` / `8088` | Bind address for HTTP transports. |
+| `BRAIN_MCP_SKIP_VALIDATION` | off | Skip the startup auth handshake (offline/dev). |
 
-You can set these in the MCP client's `env` block (recommended), `export` them,
-or put them in a `.env` (loaded from the CWD and repo root — see `.env.example`).
+You can set these in the MCP client's `env` block, `export` them, or put them in
+a `.env` (loaded from the CWD and repo root — see `.env.example`).
 
-On startup the server **validates the key** via `GET /api/keys/validate`:
-- Missing key → fails fast with copy-paste guidance.
-- Rejected key → exits with an actionable message.
-- Brain unreachable → warns and starts anyway (tools report a clear error until
-  the Web API is up).
+On startup the server does a best-effort auth handshake via `GET /auth/me`:
+- Not logged in → warns to run `python -m brain_mcp login`; starts anyway (tools
+  return an actionable error until you log in).
+- Token rejected / brain unreachable → warns and starts anyway.
 
 ## Run
 
 ```bash
 # stdio (default — how MCP hosts launch it):
-BRAIN_API_KEY=isme_... .venv/bin/python -m brain_mcp
+.venv/bin/python -m brain_mcp
 
 # optional long-lived Streamable HTTP server on 127.0.0.1:8088:
-BRAIN_API_KEY=isme_... BRAIN_MCP_TRANSPORT=streamable-http .venv/bin/python -m brain_mcp
+BRAIN_MCP_TRANSPORT=streamable-http .venv/bin/python -m brain_mcp
 ```
 
 ## Connectors (ready to paste)
 
-Replace `<YOUR_ISITME_API_KEY>` with a key from the dashboard. Example files live
-in [`connectors/`](./connectors). The `command` below uses this repo's venv;
-swap in any Python that has `brain-mcp` installed (or the `brain-mcp` console
-script).
+No API key needed — just run `python -m brain_mcp login` once, then use any of
+these. Example files live in [`connectors/`](./connectors). The `command` below
+uses this repo's venv; swap in any Python that has `brain-mcp` installed (or the
+`brain-mcp` console script).
 
 ### Cursor — `~/.cursor/mcp.json`
 
@@ -93,7 +126,6 @@ script).
       "command": "/Users/abhishekgupta/code/personal/isitme/packages/brain-mcp/.venv/bin/python",
       "args": ["-m", "brain_mcp"],
       "env": {
-        "BRAIN_API_KEY": "<YOUR_ISITME_API_KEY>",
         "BRAIN_API_BASE": "http://127.0.0.1:5050"
       }
     }
@@ -112,7 +144,6 @@ script).
       "command": "/Users/abhishekgupta/code/personal/isitme/packages/brain-mcp/.venv/bin/python",
       "args": ["-m", "brain_mcp"],
       "env": {
-        "BRAIN_API_KEY": "<YOUR_ISITME_API_KEY>",
         "BRAIN_API_BASE": "http://127.0.0.1:5050"
       }
     }
@@ -129,7 +160,6 @@ script).
       "command": "python",
       "args": ["-m", "brain_mcp"],
       "env": {
-        "BRAIN_API_KEY": "<YOUR_ISITME_API_KEY>",
         "BRAIN_API_BASE": "http://127.0.0.1:5050",
         "BRAIN_MCP_TRANSPORT": "stdio"
       }
@@ -140,9 +170,9 @@ script).
 
 ### Optional: HTTP transport
 
-Run the server as a long-lived process with
-`BRAIN_MCP_TRANSPORT=streamable-http` (requires `pip install -e '.[http]'`), then
-point an HTTP-capable MCP client at `http://127.0.0.1:8088/mcp`:
+Sign in once (`python -m brain_mcp login`), then run the server as a long-lived
+process with `BRAIN_MCP_TRANSPORT=streamable-http` (requires `pip install -e
+'.[http]'`), then point an HTTP-capable MCP client at `http://127.0.0.1:8088/mcp`:
 
 ```json
 {
@@ -163,6 +193,11 @@ MCP). The brain tools then appear to the model automatically.
 ```
 
 - `tests/test_server.py` — smoke test: the server constructs and all six tools
-  are registered with schemas; config fails fast without a key.
-- `tests/test_tools_http.py` — mocks the HTTP layer (`respx`) and asserts each
-  tool hits the right endpoint with the `X-API-Key` header.
+  are registered with schemas; config loads with no env (no key required).
+- `tests/test_tools_http.py` — mocks the HTTP layer (`respx`) and the token
+  provider, asserting each tool hits the right endpoint with an
+  `Authorization: Bearer <id_token>` header (and that auth/transport errors map
+  to the right exceptions).
+- `tests/test_auth.py` — the OAuth token layer: credential persistence (chmod
+  600), `TokenProvider` (valid / expired-and-refreshed / missing), and OAuth
+  client resolution from `OAUTH_CLIENT_JSON`.
