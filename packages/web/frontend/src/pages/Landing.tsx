@@ -7,7 +7,7 @@ function Nav() {
   const { user } = useAuth();
   return (
     <header className="sticky top-0 z-40 border-b border-white/[0.06] bg-ink-950/70 backdrop-blur-xl">
-      <div className="container-content flex h-16 items-center justify-between">
+      <div className="container-content flex h-14 items-center justify-between sm:h-16">
         <Logo />
         <nav className="hidden items-center gap-8 text-sm text-neutral-400 md:flex">
           <a href="#how" className="transition-colors hover:text-neutral-100">
@@ -18,11 +18,11 @@ function Nav() {
           </a>
         </nav>
         {user ? (
-          <Link to="/dashboard" className="btn-ghost">
-            Open dashboard
+          <Link to="/dashboard" className="btn-ghost !px-3 !py-1.5 text-xs sm:!px-4 sm:!py-2 sm:text-sm">
+            Dashboard
           </Link>
         ) : (
-          <GoogleButton label="Sign in" className="!px-4 !py-2" />
+          <GoogleButton label="Sign in" className="!px-3 !py-1.5 text-xs sm:!px-4 sm:!py-2 sm:text-sm" />
         )}
       </div>
     </header>
@@ -40,16 +40,16 @@ function Hero() {
             "radial-gradient(closest-side, rgba(124,92,255,0.55), rgba(34,211,238,0.18), transparent)",
         }}
       />
-      <div className="container-content relative pb-24 pt-24 sm:pt-32">
+      <div className="container-content relative pb-16 pt-16 sm:pb-24 sm:pt-32">
         <div className="mx-auto max-w-3xl text-center">
-          <span className="eyebrow animate-fade-in">Local-first · portable cognition</span>
-          <h1 className="mt-6 animate-fade-up text-balance text-5xl font-semibold leading-[1.05] tracking-tightest text-neutral-50 sm:text-6xl">
+          <span className="eyebrow animate-fade-in text-[10px] sm:text-xs">Local-first · portable cognition</span>
+          <h1 className="mt-4 animate-fade-up text-balance text-3xl font-semibold leading-[1.1] tracking-tightest text-neutral-50 sm:mt-6 sm:text-5xl md:text-6xl">
             Your portable
             <br />
             online brain.
           </h1>
           <p
-            className="mx-auto mt-6 max-w-xl animate-fade-up text-pretty text-lg leading-relaxed text-neutral-400"
+            className="mx-auto mt-4 max-w-xl animate-fade-up text-pretty text-base leading-relaxed text-neutral-400 sm:mt-6 sm:text-lg"
             style={{ animationDelay: "0.06s" }}
           >
             isitme quietly turns your browsing, searches, and AI chats into a weighted
@@ -57,7 +57,7 @@ function Hero() {
             recall the real you.
           </p>
           <div
-            className="mt-9 flex animate-fade-up flex-col items-center justify-center gap-3 sm:flex-row"
+            className="mt-6 flex animate-fade-up flex-col items-center justify-center gap-3 sm:mt-9 sm:flex-row"
             style={{ animationDelay: "0.12s" }}
           >
             <GoogleButton />
@@ -66,7 +66,7 @@ function Hero() {
             </a>
           </div>
           <p
-            className="mt-5 animate-fade-in text-xs text-neutral-600"
+            className="mt-4 animate-fade-in text-[11px] text-neutral-600 sm:mt-5 sm:text-xs"
             style={{ animationDelay: "0.2s" }}
           >
             Runs entirely on localhost. Your data never leaves your machine.
@@ -97,15 +97,15 @@ const STEPS = [
 
 function HowItWorks() {
   return (
-    <section id="how" className="border-t border-white/[0.06] py-24">
+    <section id="how" className="border-t border-white/[0.06] py-14 sm:py-24">
       <div className="container-content">
         <div className="max-w-2xl">
           <span className="eyebrow">How it works</span>
-          <h2 className="mt-4 text-3xl font-semibold tracking-tight text-neutral-100 sm:text-4xl">
+          <h2 className="mt-3 text-2xl font-semibold tracking-tight text-neutral-100 sm:mt-4 sm:text-3xl md:text-4xl">
             Capture → graph → recall, across any LLM or browser.
           </h2>
         </div>
-        <div className="mt-14 grid gap-px overflow-hidden rounded-2xl border border-white/[0.07] bg-white/[0.05] md:grid-cols-3">
+        <div className="mt-8 grid gap-px overflow-hidden rounded-2xl border border-white/[0.07] bg-white/[0.05] sm:mt-14 md:grid-cols-3">
           {STEPS.map((s) => (
             <div key={s.n} className="bg-ink-950 p-8">
               <div className="font-mono text-sm text-accent-soft tnum">{s.n}</div>
@@ -128,14 +128,14 @@ const PRIVACY = [
 
 function Privacy() {
   return (
-    <section id="privacy" className="border-t border-white/[0.06] py-24">
-      <div className="container-content grid gap-14 md:grid-cols-[0.9fr_1.1fr]">
+    <section id="privacy" className="border-t border-white/[0.06] py-14 sm:py-24">
+      <div className="container-content grid gap-8 sm:gap-14 md:grid-cols-[0.9fr_1.1fr]">
         <div>
           <span className="eyebrow">Privacy · local-first</span>
-          <h2 className="mt-4 text-3xl font-semibold tracking-tight text-neutral-100 sm:text-4xl">
+          <h2 className="mt-3 text-2xl font-semibold tracking-tight text-neutral-100 sm:mt-4 sm:text-3xl md:text-4xl">
             A second brain you actually own.
           </h2>
-          <p className="mt-5 max-w-md text-sm leading-relaxed text-neutral-400">
+          <p className="mt-4 max-w-md text-sm leading-relaxed text-neutral-400 sm:mt-5">
             Most “memory” products ship your life to someone else’s server. isitme
             inverts that: the graph is yours, on your disk, behind your keys.
           </p>
@@ -155,12 +155,12 @@ function Privacy() {
 
 function CTA() {
   return (
-    <section className="border-t border-white/[0.06] py-24">
+    <section className="border-t border-white/[0.06] py-14 sm:py-24">
       <div className="container-content text-center">
-        <h2 className="mx-auto max-w-xl text-3xl font-semibold tracking-tight text-neutral-100 sm:text-4xl">
+        <h2 className="mx-auto max-w-xl text-2xl font-semibold tracking-tight text-neutral-100 sm:text-3xl md:text-4xl">
           See how your brain looks.
         </h2>
-        <p className="mx-auto mt-4 max-w-md text-sm text-neutral-400">
+        <p className="mx-auto mt-3 max-w-md text-sm text-neutral-400 sm:mt-4">
           Sign in to explore your knowledge graph in 3D, manage keys, and wire up
           your MCP clients.
         </p>
@@ -174,10 +174,10 @@ function CTA() {
 
 function Footer() {
   return (
-    <footer className="border-t border-white/[0.06] py-10">
-      <div className="container-content flex flex-col items-center justify-between gap-4 text-sm text-neutral-500 sm:flex-row">
+    <footer className="border-t border-white/[0.06] py-8 sm:py-10">
+      <div className="container-content flex flex-col items-center justify-between gap-3 text-xs text-neutral-500 sm:flex-row sm:gap-4 sm:text-sm">
         <Logo />
-        <p className="text-neutral-600">Local-first personal cognition · runs on your machine</p>
+        <p className="text-center text-neutral-600">Local-first personal cognition · runs on your machine</p>
         <a href="#how" className="transition-colors hover:text-neutral-300">
           Back to top
         </a>

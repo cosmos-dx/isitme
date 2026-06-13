@@ -220,7 +220,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
             return RedirectResponse(f"{ext_redirect}#{fragment}")
         request.session["user_id"] = user_id
-        return RedirectResponse(settings.dashboard_url)
+        sep = "&" if "?" in settings.dashboard_url else "?"
+        return RedirectResponse(f"{settings.dashboard_url}{sep}ext_auth=1")
 
     @app.get("/auth/oauth-config", response_model=OAuthConfigResponse)
     async def oauth_config() -> OAuthConfigResponse:
