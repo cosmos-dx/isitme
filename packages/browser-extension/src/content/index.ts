@@ -24,13 +24,20 @@ const DEFAULT_CONFIG: ConfigResponse = {
 
 let config: ConfigResponse = DEFAULT_CONFIG;
 
+// After an extension reload/update, old content scripts in open tabs become
+// orphans — `chrome.runtime.id` goes undefined and every chrome.* call throws
+// "Extension context invalidated". Detect this and shut down gracefully.
+function isContextValid(): boolean {
+  return typeof chrome !== "undefined" && !!chrome.runtime?.id;
+}
+
 // ---- outbound buffer (debounced) -------------------------------------------
 
 let buffer: CandidateEvent[] = [];
 let flushTimer: ReturnType<typeof setTimeout> | null = null;
 
 function send(events: CandidateEvent[]): void {
-  if (events.length === 0) return;
+  if (events.length === 0 || !isContextValid()) return;
   buffer.push(...events);
   if (flushTimer) return;
   flushTimer = setTimeout(flushBuffer, 1500);
@@ -38,15 +45,13 @@ function send(events: CandidateEvent[]): void {
 
 function flushBuffer(): void {
   flushTimer = null;
-  if (buffer.length === 0) return;
+  if (buffer.length === 0 || !isContextValid()) return;
   const events = buffer;
   buffer = [];
   chrome.runtime
     .sendMessage({ kind: "events", events } satisfies Message)
     .catch(() => {
-      // Service worker asleep or extension reloading; drop silently — the
-      // background queue + periodic flush is the durable path for accepted
-      // events, and transient page signals aren't worth blocking on.
+      // Service worker asleep or extension reloading; drop silently.
     });
 }
 
@@ -101,7 +106,11 @@ function wireClicks(): void {
 // re-emit a visit + search detection when it changes.
 function wireSpaNavigation(): void {
   let last = location.href;
-  setInterval(() => {
+  const timer = setInterval(() => {
+    if (!isContextValid()) {
+      clearInterval(timer);
+      return;
+    }
     if (location.href === last) return;
     last = location.href;
     emitVisit();
@@ -123,9 +132,11 @@ async function loadConfig(): Promise<void> {
   }
 }
 
-chrome.runtime.onMessage.addListener((msg: Message) => {
-  if (msg.kind === "configChanged") void loadConfig();
-});
+if (isContextValid()) {
+  chrome.runtime.onMessage.addListener((msg: Message) => {
+    if (msg.kind === "configChanged" && isContextValid()) void loadConfig();
+  });
+}
 
 function onReady(): void {
   emitVisit();

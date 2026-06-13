@@ -46,6 +46,10 @@ export class DwellTracker {
   }
 
   private tick(): void {
+    if (typeof chrome === "undefined" || !chrome.runtime?.id) {
+      this.stop();
+      return;
+    }
     const now = Date.now();
     const elapsed = now - this.lastTick;
     this.lastTick = now;
