@@ -15,12 +15,12 @@ from collections import Counter
 from contextlib import asynccontextmanager
 from typing import Any
 
-from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response
+from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 from starlette.middleware.sessions import SessionMiddleware
 
-from web_api import db, mcp_config, repository
+from web_api import auth, mcp_config
 from web_api.brain_client import BrainClient
 from web_api.config import Settings, get_settings
 from web_api.llm import LLMHelper
@@ -29,14 +29,22 @@ from web_api.models import (
     ApiKeyOut,
     AskRequest,
     CreateKeyRequest,
+    IngestRequest,
     McpConfigResponse,
     MeResponse,
+    QueryRequest,
     UserOut,
+    ValidateKeyResponse,
 )
 from web_api.oauth import build_oauth
 from web_api.security import generate_api_key
+from web_api.store import build_store
 
 logger = logging.getLogger("web.api")
+
+# Extension/MCP clients authenticate with X-API-Key rather than cookies; allow
+# the chrome-extension origin so the extension can call /api/ingest etc.
+_EXTENSION_ORIGIN_REGEX = r"chrome-extension://.*"
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -44,23 +52,24 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
-        engine = db.make_engine(settings.db_url)
-        await db.create_all(engine)
-        app.state.engine = engine
+        store = build_store(settings)
+        await store.init()
+        app.state.store = store
         app.state.brain = BrainClient(settings.brain_base_url)
         app.state.llm = LLMHelper(settings.openai_api_key)
         app.state.oauth = build_oauth(settings)
         logger.info(
-            "Web API ready (oauth=%s, brain=%s, openai=%s).",
+            "Web API ready (oauth=%s, brain=%s, openai=%s, store=%s).",
             settings.oauth_configured,
             settings.brain_base_url,
             app.state.llm.enabled,
+            type(store).__name__,
         )
         try:
             yield
         finally:
             await app.state.brain.close()
-            await engine.dispose()
+            await store.close()
 
     app = FastAPI(
         title="isitme — Web API",
