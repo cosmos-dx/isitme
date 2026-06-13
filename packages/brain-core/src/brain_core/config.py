@@ -75,13 +75,16 @@ class EmbeddingSettings(BaseModel):
 
 
 class StorageSettings(BaseModel):
-    event_backend: Literal["sqlite", "postgres"] = "sqlite"
-    graph_backend: Literal["sqlite", "neo4j", "kuzu"] = "sqlite"
-    vector_backend: Literal["numpy", "chroma", "qdrant", "pgvector"] = "numpy"
+    event_backend: Literal["sqlite", "postgres", "mongodb"] = "sqlite"
+    graph_backend: Literal["sqlite", "neo4j", "kuzu", "mongodb"] = "sqlite"
+    vector_backend: Literal["numpy", "chroma", "qdrant", "pgvector", "mongodb"] = "numpy"
     postgres_dsn: str | None = None
     chroma_path: str | None = None
     qdrant_url: str | None = None
     neo4j_uri: str | None = None
+    # MongoDB (opt-in; used when any *_backend is "mongodb").
+    mongo_uri: str = "mongodb://localhost:27017"
+    mongo_db: str = "isitme"
 
 
 class GraphSettings(BaseModel):

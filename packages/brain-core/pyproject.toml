@@ -22,6 +22,7 @@ dependencies = [
     "pyyaml>=6.0",
     "numpy>=1.26",
     "cryptography>=42.0",
+    "motor>=3.4",
 ]
 
 [project.optional-dependencies]
@@ -30,10 +31,12 @@ embeddings = ["sentence-transformers>=2.6"]
 openai = ["openai>=1.20"]
 chroma = ["chromadb>=0.5"]
 postgres = ["asyncpg>=0.29"]
+mongo = ["motor>=3.4"]
 dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.23",
     "ruff>=0.4",
+    "mongomock-motor>=0.0.29",
 ]
 
 [project.scripts]

@@ -1,0 +1,20 @@
+{
+  "name": "isitme-browser-extension",
+  "private": true,
+  "version": "0.1.0",
+  "description": "isitme central-brain capture extension (Manifest V3). Captures browsing behavior and batches it to the local Web API.",
+  "type": "module",
+  "scripts": {
+    "clean": "rm -rf dist",
+    "typecheck": "tsc --noEmit",
+    "build": "npm run typecheck && node scripts/build.mjs",
+    "build:fast": "node scripts/build.mjs",
+    "dev": "node scripts/build.mjs --watch",
+    "zip": "node scripts/build.mjs && cd dist && zip -r -X ../isitme-extension.zip . && cd .."
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.0.270",
+    "esbuild": "^0.23.1",
+    "typescript": "^5.6.3"
+  }
+}

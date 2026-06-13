@@ -94,6 +94,11 @@ class Settings:
         self.data_dir.mkdir(parents=True, exist_ok=True)
         self.db_url: str = f"sqlite+aiosqlite:///{self.data_dir / 'web.db'}"
 
+        # Optional MongoDB persistence. Unset -> SQLite (zero setup). When
+        # WEB_MONGO_URI is provided, users/api_keys/usage live in Mongo instead.
+        self.mongo_uri: str | None = os.environ.get("WEB_MONGO_URI") or None
+        self.mongo_db: str = os.environ.get("WEB_MONGO_DB", "isitme")
+
         self.session_secret: str = self._resolve_session_secret()
         self.session_cookie: str = os.environ.get("WEB_SESSION_COOKIE", "isitme_session")
 

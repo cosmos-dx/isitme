@@ -42,6 +42,22 @@ class AskRequest(BaseModel):
     k: int = Field(default=6, ge=1, le=50)
 
 
+class QueryRequest(BaseModel):
+    query: str = Field(min_length=1)
+    k: int = Field(default=5, ge=1, le=50)
+
+
+class IngestRequest(BaseModel):
+    client: str = "unknown"
+    client_version: str | None = None
+    events: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class ValidateKeyResponse(BaseModel):
+    valid: bool
+    user: UserOut | None = None
+
+
 class McpConfigResponse(BaseModel):
     brain_url: str
     api_key_prefix: str | None = None

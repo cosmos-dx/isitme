@@ -48,3 +48,20 @@ class BrainClient:
         resp = await self._client.post("/v1/ingest", json=batch)
         resp.raise_for_status()
         return resp.json()
+
+    async def log_one(self, event: dict[str, Any]) -> dict[str, Any]:
+        resp = await self._client.post("/v1/log", json=event)
+        resp.raise_for_status()
+        return resp.json()
+
+    async def recall(self, query: str, k: int = 5) -> dict[str, Any]:
+        resp = await self._client.post("/v1/recall", json={"query": query, "k": k})
+        resp.raise_for_status()
+        return resp.json()
+
+    async def search_memory(self, query: str, k: int = 5) -> dict[str, Any]:
+        resp = await self._client.post(
+            "/v1/search_memory", json={"query": query, "k": k}
+        )
+        resp.raise_for_status()
+        return resp.json()

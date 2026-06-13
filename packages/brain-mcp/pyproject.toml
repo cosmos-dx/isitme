@@ -1,0 +1,45 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "brain-mcp"
+version = "0.1.0"
+description = "isitme Brain MCP — an MCP server that exposes your personal central brain (behavior + knowledge graph) to any LLM host."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "isitme" }]
+dependencies = [
+    "mcp>=1.2",
+    "httpx>=0.27",
+    "python-dotenv>=1.0",
+]
+
+[project.optional-dependencies]
+# Optional Streamable HTTP / SSE transport (uvicorn-backed).
+http = ["uvicorn[standard]>=0.29"]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "respx>=0.21",
+    "ruff>=0.4",
+]
+
+[project.scripts]
+brain-mcp = "brain_mcp.__main__:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/brain_mcp"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "W"]

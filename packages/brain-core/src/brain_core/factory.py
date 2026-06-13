@@ -18,12 +18,25 @@ from brain_core.storage.vector.numpy_store import NumpyVectorStore
 
 
 def build_event_store(settings: Settings) -> EventStore:
+    backend = settings.storage.event_backend
+    if backend == "mongodb":
+        from brain_core.storage.mongo.event_store import MongoEventStore
+
+        return MongoEventStore(settings.storage.mongo_uri, settings.storage.mongo_db)
     # SqlEventStore is dialect-agnostic; a postgres DSN is a drop-in.
     return SqlEventStore(settings.event_db_url)
 
 
 def build_graph_store(settings: Settings) -> GraphStore:
     backend = settings.storage.graph_backend
+    if backend == "mongodb":
+        from brain_core.storage.mongo.graph_store import MongoGraphStore
+
+        return MongoGraphStore(
+            settings.storage.mongo_uri,
+            settings.storage.mongo_db,
+            settings.graph.edge_half_life_days,
+        )
     if backend in ("sqlite",) or settings.storage.postgres_dsn:
         return SqlGraphStore(settings.graph_db_url, settings.graph.edge_half_life_days)
     # TODO(scale): Neo4j / Kùzu adapters implementing GraphStore.
@@ -37,6 +50,10 @@ def build_vector_store(settings: Settings) -> VectorStore:
     backend = settings.storage.vector_backend
     if backend == "numpy":
         return NumpyVectorStore(settings.data_path / "vectors")
+    if backend == "mongodb":
+        from brain_core.storage.mongo.vector_store import MongoVectorStore
+
+        return MongoVectorStore(settings.storage.mongo_uri, settings.storage.mongo_db)
     if backend == "chroma":
         from brain_core.storage.vector.chroma_store import ChromaVectorStore
 

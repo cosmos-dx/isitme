@@ -1,0 +1,46 @@
+{
+  "manifest_version": 3,
+  "name": "isitme — central brain capture",
+  "version": "0.1.0",
+  "description": "Captures your browsing behavior (visits, dwell, clicks, link-trails, searches, LLM chats) and feeds it to your local isitme brain.",
+  "minimum_chrome_version": "111",
+  "icons": {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
+  "action": {
+    "default_title": "isitme",
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png"
+    }
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "options_ui": {
+    "page": "options.html",
+    "open_in_tab": true
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "run_at": "document_start",
+      "all_frames": false
+    }
+  ],
+  "permissions": [
+    "storage",
+    "tabs",
+    "webNavigation",
+    "identity",
+    "scripting",
+    "idle",
+    "alarms"
+  ],
+  "host_permissions": ["<all_urls>"]
+}

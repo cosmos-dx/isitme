@@ -40,6 +40,15 @@ api_keys_table = sa.Table(
     sa.Column("revoked_at", sa.String, nullable=True),
 )
 
+usage_table = sa.Table(
+    "usage",
+    metadata,
+    sa.Column("id", sa.Integer, primary_key=True, autoincrement=True),
+    sa.Column("user_id", sa.String, nullable=False, index=True),
+    sa.Column("endpoint", sa.String, nullable=False),
+    sa.Column("at", sa.String, nullable=False),
+)
+
 
 def make_engine(url: str) -> AsyncEngine:
     return create_async_engine(url, future=True)
