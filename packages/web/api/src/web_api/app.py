@@ -23,6 +23,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from web_api import auth, mcp_config
 from web_api.brain_client import BrainClient
 from web_api.config import Settings, get_settings
+from web_api.google_auth import GoogleTokenVerifier
 from web_api.llm import LLMHelper
 from web_api.models import (
     ApiKeyCreatedOut,
@@ -32,6 +33,7 @@ from web_api.models import (
     IngestRequest,
     McpConfigResponse,
     MeResponse,
+    OAuthConfigResponse,
     QueryRequest,
     UserOut,
     ValidateKeyResponse,
@@ -42,8 +44,9 @@ from web_api.store import build_store
 
 logger = logging.getLogger("web.api")
 
-# Extension/MCP clients authenticate with X-API-Key rather than cookies; allow
-# the chrome-extension origin so the extension can call /api/ingest etc.
+# Extension/MCP clients authenticate with an Authorization: Bearer <google token>
+# (X-API-Key is the legacy fallback) rather than cookies; allow the
+# chrome-extension origin so the extension can call /api/ingest etc.
 _EXTENSION_ORIGIN_REGEX = r"chrome-extension://.*"
 
 
@@ -58,6 +61,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.brain = BrainClient(settings.brain_base_url)
         app.state.llm = LLMHelper(settings.openai_api_key)
         app.state.oauth = build_oauth(settings)
+        # Verifies Google Bearer tokens (id_token / access_token) for MCP + the
+        # extension. None when OAuth isn't configured (Bearer auth disabled).
+        app.state.google_verifier = (
+            GoogleTokenVerifier(settings.google.client_id) if settings.google else None
+        )
         logger.info(
             "Web API ready (oauth=%s, brain=%s, openai=%s, store=%s).",
             settings.oauth_configured,
@@ -69,6 +77,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             yield
         finally:
             await app.state.brain.close()
+            if app.state.google_verifier is not None:
+                await app.state.google_verifier.aclose()
             await store.close()
 
     app = FastAPI(
@@ -104,8 +114,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def get_llm(request: Request) -> LLMHelper:
         return request.app.state.llm
 
-    # Session-only guard (browser) and combined session-or-API-key guard.
-    current_user = auth.current_user
+    # Session-only guard (browser) and combined session/Bearer/API-key guards.
     require_user = auth.require_user
     require_auth = auth.require_auth
 
@@ -157,8 +166,38 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         request.session["user_id"] = user_id
         return RedirectResponse(settings.dashboard_url)
 
+    @app.get("/auth/oauth-config", response_model=OAuthConfigResponse)
+    async def oauth_config() -> OAuthConfigResponse:
+        """Public, non-secret OAuth client info so local clients (MCP CLI,
+        extension) can initiate Google sign-in without hardcoding the client_id.
+
+        Never returns the client_secret. ``loopback_redirect_uris`` lists any
+        registered ``http://127.0.0.1``/``localhost`` redirect URIs usable by a
+        CLI loopback flow.
+        """
+        google = settings.google
+        if google is None:
+            return OAuthConfigResponse(configured=False)
+        loopback = [
+            uri
+            for uri in google.redirect_uris
+            if uri.startswith("http://127.0.0.1") or uri.startswith("http://localhost")
+        ]
+        return OAuthConfigResponse(
+            configured=True,
+            client_id=google.client_id,
+            auth_uri=google.auth_uri,
+            token_uri=google.token_uri,
+            scopes=["openid", "email", "profile"],
+            redirect_uris=google.redirect_uris,
+            loopback_redirect_uris=loopback,
+        )
+
     @app.get("/auth/me", response_model=MeResponse)
-    async def auth_me(user: dict[str, Any] | None = Depends(current_user)) -> MeResponse:
+    async def auth_me(request: Request) -> MeResponse:
+        # Resolves a session cookie OR a Google Bearer token OR a legacy API key,
+        # so MCP / extension clients can confirm who their token authenticates as.
+        user = await auth.authenticate(request)
         if not user:
             return MeResponse(authenticated=False)
         return MeResponse(

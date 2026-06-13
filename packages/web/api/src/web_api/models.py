@@ -58,6 +58,18 @@ class ValidateKeyResponse(BaseModel):
     user: UserOut | None = None
 
 
+class OAuthConfigResponse(BaseModel):
+    """Public (non-secret) Google OAuth client info for local clients."""
+
+    configured: bool
+    client_id: str | None = None
+    auth_uri: str | None = None
+    token_uri: str | None = None
+    scopes: list[str] = Field(default_factory=list)
+    redirect_uris: list[str] = Field(default_factory=list)
+    loopback_redirect_uris: list[str] = Field(default_factory=list)
+
+
 class McpConfigResponse(BaseModel):
     brain_url: str
     api_key_prefix: str | None = None
