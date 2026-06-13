@@ -19,19 +19,30 @@
           <span>API base URL</span>
           <input id="apiBaseUrl" type="url" placeholder="http://127.0.0.1:5050" />
         </label>
-        <label class="field">
-          <span>API key (<code>X-API-Key</code>)</span>
-          <div class="row">
-            <input id="apiKey" type="password" placeholder="isme_…" autocomplete="off" />
-            <button id="toggleKey" class="btn btn-sm" type="button">show</button>
-            <button id="validateKey" class="btn btn-sm" type="button">Validate</button>
-          </div>
-        </label>
-        <p id="keyResult" class="hint"></p>
         <p class="hint">
-          Paste a key minted from the dashboard (Settings → API keys), or sign in
-          with Google in the popup. The key is sent only to your API base URL.
+          <b>Sign in with Google from the popup</b> — that's all you need. The
+          extension sends your Google token as <code>Authorization: Bearer …</code>
+          on every upload and refreshes it automatically. Use <b>Validate</b>
+          below to confirm the current credential is accepted.
         </p>
+        <button id="validateKey" class="btn btn-sm" type="button">Validate authentication</button>
+        <p id="keyResult" class="hint"></p>
+
+        <details>
+          <summary>Legacy: manual API key (optional)</summary>
+          <label class="field">
+            <span>API key (<code>X-API-Key</code>) — fallback only</span>
+            <div class="row">
+              <input id="apiKey" type="password" placeholder="isme_…" autocomplete="off" />
+              <button id="toggleKey" class="btn btn-sm" type="button">show</button>
+            </div>
+          </label>
+          <p class="hint">
+            Only used if you are not signed in with Google. Paste a key minted in
+            the dashboard (Settings → API keys). The key is sent only to your API
+            base URL.
+          </p>
+        </details>
       </section>
 
       <section class="card">
@@ -95,14 +106,17 @@
           <span>OAuth client ID (web client; public, not the secret)</span>
           <input id="googleClientId" type="text" placeholder="…apps.googleusercontent.com" />
         </label>
-        <label class="toggle wide">
-          <input id="autoProvisionKey" type="checkbox" /> Auto-provision an API key on sign-in
-          (only if the Web API exposes a provisioning endpoint)
-        </label>
-        <label class="field">
-          <span>Provision endpoint path</span>
-          <input id="provisionPath" type="text" placeholder="/api/extension/provision" />
-        </label>
+        <details>
+          <summary>Legacy: auto-provision an API key (optional)</summary>
+          <label class="toggle wide">
+            <input id="autoProvisionKey" type="checkbox" /> Auto-provision an API key on sign-in
+            (only if the Web API exposes a provisioning endpoint)
+          </label>
+          <label class="field">
+            <span>Provision endpoint path</span>
+            <input id="provisionPath" type="text" placeholder="/api/extension/provision" />
+          </label>
+        </details>
         <p id="redirectHint" class="hint"></p>
       </section>
 

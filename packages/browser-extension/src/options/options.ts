@@ -107,7 +107,7 @@ async function save(): Promise<void> {
   flashSaved();
 }
 
-async function validateKey(): Promise<void> {
+async function validateCredential(): Promise<void> {
   const result = $("keyResult");
   result.textContent = "Validating…";
   result.className = "hint";
@@ -118,17 +118,17 @@ async function validateKey(): Promise<void> {
     error?: string;
   };
   if (res.valid) {
-    result.textContent = "Key is valid.";
+    result.textContent = "Authenticated (Google token or legacy key accepted).";
     result.className = "hint ok";
   } else {
-    result.textContent = `Key is not valid (${res.error ?? `HTTP ${res.status}`}).`;
+    result.textContent = `Not authenticated (${res.error ?? `HTTP ${res.status}`}).`;
     result.className = "hint err";
   }
 }
 
 function wire(): void {
   $("saveBtn").addEventListener("click", () => void save());
-  $("validateKey").addEventListener("click", () => void validateKey());
+  $("validateKey").addEventListener("click", () => void validateCredential());
   $("resetBtn").addEventListener("click", async () => {
     await setConfig(structuredClone(DEFAULT_CONFIG));
     fill(await getConfig());

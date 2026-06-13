@@ -50,7 +50,7 @@ content script (per page)            background service worker (the policy gate)
 webNavigation (link-trail) ────────▶  persistent offline queue (chrome.storage)
                                          │  flush on: size ≥ batch, alarm (30s), idle
                                          ▼
-                                  POST /api/ingest  (X-API-Key)
+                          POST /api/ingest  (Authorization: Bearer <google token>)
 ```
 
 The **background worker is the single chokepoint**: content scripts only emit
@@ -90,31 +90,40 @@ Then in Chrome:
 1. Open `chrome://extensions`, enable **Developer mode** (top-right).
 2. Click **Load unpacked** and select the `packages/browser-extension/dist/` folder.
 3. Copy the extension's **ID** (shown on the card) — you need it for OAuth.
-4. Open the extension **Options** and set the **API base URL** and **API key**
-   (or sign in with Google in the popup — see below).
+4. Open the popup and click **Sign in** (Google). That's the only step needed
+   to start uploading — see [sign-in below](#sign-in--authentication).
 
 The build is dependency-free at runtime (no framework); `dist/` contains
 `manifest.json`, four bundled scripts, two HTML/CSS pairs, and generated icons.
 
-## Sign-in & getting an API key
+## Sign-in & authentication
 
-**Authentication (who you are)** — click **Sign in** in the popup. The
-extension runs Google OAuth via `chrome.identity.launchWebAuthFlow`, verifies
-the token against Google's userinfo endpoint, and stores your profile
-(name/email/avatar). See [OAUTH below](#oauth-in-the-extension).
+Authentication **is** the credential — there is no separate API key to manage.
 
-**Ingestion key (how it authenticates to the API)** — the supported path is to
-mint an API key in the dashboard (Settings → API keys) and paste it into the
-extension Options. The key is sent as the `X-API-Key` header on every
-`POST /api/ingest`. Use **Validate** in Options to verify it against
-`GET /api/keys/validate`.
+Click **Sign in** in the popup. The extension runs Google OAuth via
+`chrome.identity.launchWebAuthFlow` (`response_type=id_token token`), derives
+your profile from the verified `id_token` claims, and **caches the token**. That
+token is then sent as `Authorization: Bearer <token>` on every
+`POST /api/ingest`. The Web API verifies it against Google (checking the
+signature/audience for the id_token, or Google's `tokeninfo`/`userinfo` for the
+access_token) and resolves your user — see `packages/web/api`'s auth contract.
 
-> Optional auto-provisioning: if the Web API later exposes an endpoint that
-> trades a Google token for an isitme key, enable **Auto-provision** in Options
-> and set the endpoint path; the extension will request a key on sign-in and
-> fall back to paste if the endpoint is absent.
+**Token refresh** — implicit-flow tokens last ~1 hour and have no refresh token,
+so the extension transparently re-runs the auth flow **silently**
+(`launchWebAuthFlow` with `interactive: false`) when the cached token nears
+expiry or a request returns `401`. If the silent refresh can't complete (your
+Google session/consent lapsed), the popup shows "session expired — sign in" and
+you click **Sign in** once more.
 
-## OAuth in the extension
+Use **Validate authentication** in Options to confirm the current credential is
+accepted (it calls `GET /auth/me`).
+
+> **Legacy fallback:** a manually-pasted `X-API-Key` (from the dashboard) is
+> still honored when you are *not* signed in with Google. It lives under a
+> collapsed "Legacy" section in Options. OAuth is the default and recommended
+> path.
+
+## OAuth in the extension — Google Cloud setup
 
 `chrome.identity.launchWebAuthFlow` opens Google's consent screen and returns to
 the extension redirect URI `https://<EXTENSION_ID>.chromiumapp.org/`. Because
@@ -129,13 +138,15 @@ the extension ID determines that URI, you must register it in Google Cloud:
 3. The OAuth consent screen is in **Testing**, so add your Google account under
    **OAuth consent screen → Test users**. Without this, sign-in returns
    `access_denied`.
-4. Click **Save** in Options, then **Sign in** from the popup.
+4. Ensure the **openid / email / profile** scopes are enabled (the default
+   consent set).
+5. Click **Sign in** from the popup.
 
 The Options page shows your live redirect URI and these instructions.
 
 > The extension never holds the OAuth **client secret** — it uses the public
-> client ID with the implicit (`response_type=token`) flow and validates the
-> token via Google's userinfo endpoint.
+> client ID with the implicit (`response_type=id_token token`) flow. The token is
+> verified server-side by the Web API against Google.
 >
 > **Alternative — `chrome.identity.getAuthToken`:** instead of `launchWebAuthFlow`
 > you can create a *Chrome Extension* OAuth client (type "Chrome App") in Google
@@ -149,12 +160,14 @@ The Options page shows your live redirect URI and these instructions.
 
 All settings live in **Options** (and in `chrome.storage.local`):
 
-- **API base URL** / **API key** — connection + `X-API-Key`.
+- **API base URL** — where events are uploaded.
+- **Authentication** — sign in with Google in the popup (primary). A legacy
+  `X-API-Key` fallback lives under a collapsed section.
 - **Capture toggles** — per category (above).
 - **Redaction** — on/off.
 - **Allow / deny lists** — host patterns.
 - **Batching** — batch size (default 25), flush interval (default 30s), max
   offline queue (default 1000, oldest dropped past the cap).
-- **Google sign-in** — client ID, auto-provision toggle + endpoint path.
+- **Google sign-in** — client ID (defaults to the project web client).
 
 See [`PUBLISHING.md`](./PUBLISHING.md) for Chrome Web Store deployment.
