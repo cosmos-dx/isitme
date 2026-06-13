@@ -25,8 +25,9 @@ import type {
   StatusResponse,
 } from "../common/types";
 import { nowIso, uuid } from "../common/util";
-import { fetchUsage, ingest, validateKey } from "./api";
-import { signInWithGoogle } from "./auth";
+import type { IngestAuth } from "../common/types";
+import { fetchUsage, ingest, validateAuth } from "./api";
+import { bearerOf, isTokenValid, signInWithGoogle } from "./auth";
 import { EventQueue } from "./queue";
 import { TabTracker } from "./tracking";
 
@@ -111,6 +112,32 @@ async function intake(candidates: CandidateEvent[]): Promise<void> {
   }
 }
 
+// ---- auth resolution --------------------------------------------------------
+
+/**
+ * Resolve the ingestion credential: a valid Google Bearer token (refreshing
+ * silently if it has expired and the user is signed in), or the legacy API key.
+ * Persists any refreshed token back to config.
+ */
+async function resolveIngestAuth(config: ExtensionConfig): Promise<IngestAuth> {
+  const token = config.auth.token;
+  if (isTokenValid(token)) return { bearer: bearerOf(token), apiKey: config.apiKey };
+
+  // Token missing/expired but the user has signed in before -> silent refresh.
+  if (config.auth.profile) {
+    try {
+      const result = await signInWithGoogle(config, { interactive: false });
+      await patchConfig({
+        auth: { ...config.auth, profile: result.profile, token: result.token },
+      });
+      return { bearer: bearerOf(result.token), apiKey: config.apiKey };
+    } catch {
+      // Silent refresh failed (consent/session lapsed); fall through to legacy key.
+    }
+  }
+  return { bearer: null, apiKey: config.apiKey };
+}
+
 // ---- flush ------------------------------------------------------------------
 
 async function flush(): Promise<void> {
@@ -118,13 +145,27 @@ async function flush(): Promise<void> {
   flushing = true;
   try {
     const config = await getConfig();
-    if (!config.apiKey) return;
+    let auth = await resolveIngestAuth(config);
+    if (!auth.bearer && !auth.apiKey) {
+      await patchRuntime({
+        lastSyncOk: false,
+        lastError: "Not signed in — open the popup and sign in with Google.",
+      });
+      return;
+    }
+    let reauthTried = false;
     // Drain in batches so a big offline backlog ships in chunks.
     for (;;) {
       const batch = await queue.peek(config.batch.maxBatchSize);
       if (batch.length === 0) break;
-      const result = await ingest(config.apiBaseUrl, config.apiKey, batch, CLIENT_VERSION);
+      const result = await ingest(config.apiBaseUrl, auth, batch, CLIENT_VERSION);
       if (!result.ok) {
+        // A rejected token may just have expired mid-flush: refresh once and retry.
+        if (result.status === 401 && auth.bearer && !reauthTried) {
+          reauthTried = true;
+          auth = await resolveIngestAuth(await getConfig());
+          if (auth.bearer || auth.apiKey) continue;
+        }
         await patchRuntime({
           lastSyncOk: false,
           lastError: result.error ?? `HTTP ${result.status}`,
@@ -260,14 +301,15 @@ async function handleMessage(msg: Message): Promise<unknown> {
 
     case "signOut": {
       await patchConfig({
-        auth: { ...(await getConfig()).auth, profile: null },
+        auth: { ...(await getConfig()).auth, profile: null, token: null },
       });
       return buildStatus();
     }
 
     case "validateKey": {
       const config = await getConfig();
-      const res = await validateKey(config.apiBaseUrl, config.apiKey);
+      const auth = await resolveIngestAuth(config);
+      const res = await validateAuth(config.apiBaseUrl, auth);
       await patchRuntime({ apiKeyValid: res.valid, lastError: res.error ?? null });
       return { valid: res.valid, status: res.status, error: res.error };
     }
@@ -280,17 +322,14 @@ async function handleMessage(msg: Message): Promise<unknown> {
 async function doSignIn(): Promise<unknown> {
   const config = await getConfig();
   try {
-    const result = await signInWithGoogle(config);
-    const patch: Partial<ExtensionConfig> = {
-      auth: { ...config.auth, profile: result.profile },
-    };
-    if (result.apiKey) patch.apiKey = result.apiKey;
-    await patchConfig(patch);
-    if (result.apiKey) {
-      const res = await validateKey(config.apiBaseUrl, result.apiKey);
-      await patchRuntime({ apiKeyValid: res.valid });
-    }
-    return { ok: true, profile: result.profile, provisioned: Boolean(result.apiKey) };
+    const result = await signInWithGoogle(config, { interactive: true });
+    await patchConfig({
+      auth: { ...config.auth, profile: result.profile, token: result.token },
+    });
+    // Confirm the token is accepted by the Web API (best-effort).
+    const res = await validateAuth(config.apiBaseUrl, { bearer: bearerOf(result.token) });
+    await patchRuntime({ apiKeyValid: res.valid, lastError: res.valid ? null : res.error ?? null });
+    return { ok: true, profile: result.profile };
   } catch (err) {
     return { ok: false, error: String(err instanceof Error ? err.message : err) };
   }
@@ -302,8 +341,19 @@ async function buildStatus(): Promise<StatusResponse> {
     getStats(),
     getRuntime(),
   ]);
+  const token = config.auth.token;
+  const tokenValid = isTokenValid(token);
+  const signedIn = Boolean(config.auth.profile) && tokenValid;
+  const auth = {
+    signedIn,
+    tokenExpired: Boolean(token) && !tokenValid,
+    usingLegacyKey: !tokenValid && Boolean(config.apiKey),
+  };
   // Opportunistically refresh server-side totals (non-blocking failure).
-  void fetchUsage(config.apiBaseUrl, config.apiKey);
+  void fetchUsage(config.apiBaseUrl, {
+    bearer: tokenValid ? bearerOf(token) : null,
+    apiKey: config.apiKey,
+  });
   return {
     config: {
       paused: config.paused,
@@ -311,6 +361,7 @@ async function buildStatus(): Promise<StatusResponse> {
       hasApiKey: Boolean(config.apiKey),
     },
     profile: config.auth.profile,
+    auth,
     stats,
     runtime,
   };

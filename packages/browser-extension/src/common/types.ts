@@ -70,16 +70,31 @@ export interface OAuthProfile {
   signedInAt: string;
 }
 
+/** A Google OAuth token used as the ingestion Bearer credential. */
+export interface AuthToken {
+  /** OIDC id_token (preferred Bearer — verifiable offline by the Web API). */
+  idToken: string | null;
+  /** OAuth access_token (Bearer fallback; verified via Google by the Web API). */
+  accessToken: string | null;
+  /** Epoch milliseconds at which the token expires. */
+  expiresAt: number;
+}
+
 export interface AuthConfig {
   /** Public Google OAuth client_id (NOT the secret). */
   googleClientId: string;
   /** Stored profile after a successful sign-in. */
   profile: OAuthProfile | null;
   /**
-   * Optional: if the Web API exposes an endpoint that exchanges a Google
+   * Cached Google OAuth token. Sent as `Authorization: Bearer <token>` on
+   * every `/api/ingest`. Refreshed by re-running the (silent) auth flow when it
+   * nears expiry. Null until the user signs in.
+   */
+  token: AuthToken | null;
+  /**
+   * Legacy/optional: if the Web API exposes an endpoint that exchanges a Google
    * id_token for an isitme API key, set this path to auto-provision a key on
-   * sign-in. Disabled by default; the supported path is pasting a key minted
-   * from the dashboard.
+   * sign-in. Disabled by default — Google OAuth (above) is the primary path.
    */
   autoProvisionKey: boolean;
   provisionPath: string;
@@ -87,6 +102,7 @@ export interface AuthConfig {
 
 export interface ExtensionConfig {
   apiBaseUrl: string;
+  /** Legacy/optional manual `X-API-Key` fallback. OAuth is the default. */
   apiKey: string;
   /** Master pause switch (popup toggle). */
   paused: boolean;
@@ -111,7 +127,14 @@ export interface RuntimeState {
   lastSyncOk: boolean;
   lastError: string | null;
   queueLength: number;
+  /** Whether the last credential check (Bearer token or legacy key) succeeded. */
   apiKeyValid: boolean | null;
+}
+
+/** Resolved ingestion credential: a Google Bearer token or a legacy API key. */
+export interface IngestAuth {
+  bearer?: string | null;
+  apiKey?: string | null;
 }
 
 // ---- message protocol (content <-> background, ui <-> background) -----------
@@ -140,11 +163,21 @@ export interface CandidateEvent {
   data?: Record<string, unknown>;
 }
 
+export interface AuthStatus {
+  /** Signed in with Google and holding a (currently valid) token. */
+  signedIn: boolean;
+  /** A cached token exists but has expired (needs a silent/interactive refresh). */
+  tokenExpired: boolean;
+  /** Falling back to a manually-pasted legacy API key. */
+  usingLegacyKey: boolean;
+}
+
 export interface StatusResponse {
   config: Pick<ExtensionConfig, "paused" | "apiBaseUrl"> & {
     hasApiKey: boolean;
   };
   profile: OAuthProfile | null;
+  auth: AuthStatus;
   stats: DailyStats;
   runtime: RuntimeState;
 }

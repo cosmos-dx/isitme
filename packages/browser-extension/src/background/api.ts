@@ -1,6 +1,9 @@
 // Thin client for the local Web API (BFF on :5050). Implements only the shared
-// contract: POST /api/ingest, GET /api/keys/validate, GET /api/extension/usage.
-import type { EventBatch, RawEvent } from "../common/types";
+// contract: POST /api/ingest, GET /auth/me, GET /api/extension/usage.
+//
+// Auth uses the shared Bearer contract: `Authorization: Bearer <google token>`.
+// A legacy `X-API-Key` is supported as a fallback when no Google token is set.
+import type { EventBatch, IngestAuth, RawEvent } from "../common/types";
 
 const CLIENT = "extension";
 
@@ -20,21 +23,26 @@ function joinUrl(base: string, path: string): string {
   return `${base.replace(/\/+$/, "")}${path}`;
 }
 
+/** Build auth headers, preferring the Google Bearer token over the legacy key. */
+function authHeaders(auth: IngestAuth): Record<string, string> | null {
+  if (auth.bearer) return { Authorization: `Bearer ${auth.bearer}` };
+  if (auth.apiKey) return { "X-API-Key": auth.apiKey };
+  return null;
+}
+
 export async function ingest(
   baseUrl: string,
-  apiKey: string,
+  auth: IngestAuth,
   events: RawEvent[],
   clientVersion: string,
 ): Promise<IngestResult> {
-  if (!apiKey) return { ok: false, status: 0, error: "no api key configured" };
+  const headers = authHeaders(auth);
+  if (!headers) return { ok: false, status: 0, error: "not signed in" };
   const body: EventBatch = { client: CLIENT, client_version: clientVersion, events };
   try {
     const resp = await fetch(joinUrl(baseUrl, "/api/ingest"), {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-API-Key": apiKey,
-      },
+      headers: { "Content-Type": "application/json", ...headers },
       body: JSON.stringify(body),
     });
     if (!resp.ok) {
@@ -46,17 +54,24 @@ export async function ingest(
   }
 }
 
-export async function validateKey(
+/** Verify a credential by resolving the caller via GET /auth/me (Bearer or key). */
+export async function validateAuth(
   baseUrl: string,
-  apiKey: string,
+  auth: IngestAuth,
 ): Promise<ValidateResult> {
-  if (!apiKey) return { valid: false, status: 0, error: "no api key" };
+  const headers = authHeaders(auth);
+  if (!headers) return { valid: false, status: 0, error: "not signed in" };
   try {
-    const resp = await fetch(joinUrl(baseUrl, "/api/keys/validate"), {
-      method: "GET",
-      headers: { "X-API-Key": apiKey },
-    });
-    return { valid: resp.ok, status: resp.status, error: resp.ok ? undefined : await safeText(resp) };
+    const resp = await fetch(joinUrl(baseUrl, "/auth/me"), { method: "GET", headers });
+    if (!resp.ok) {
+      return { valid: false, status: resp.status, error: await safeText(resp) };
+    }
+    const data = (await resp.json()) as { authenticated?: boolean };
+    return {
+      valid: Boolean(data.authenticated),
+      status: resp.status,
+      error: data.authenticated ? undefined : "token not accepted",
+    };
   } catch (err) {
     return { valid: false, status: 0, error: String(err) };
   }
@@ -69,12 +84,13 @@ export interface UsageResult {
 
 export async function fetchUsage(
   baseUrl: string,
-  apiKey: string,
+  auth: IngestAuth,
 ): Promise<UsageResult> {
+  const headers = authHeaders(auth);
   try {
     const resp = await fetch(joinUrl(baseUrl, "/api/extension/usage"), {
       method: "GET",
-      headers: apiKey ? { "X-API-Key": apiKey } : {},
+      headers: headers ?? {},
     });
     if (!resp.ok) return { ok: false };
     return { ok: true, data: (await resp.json()) as Record<string, unknown> };

@@ -43,6 +43,7 @@ export const DEFAULT_CONFIG: ExtensionConfig = {
   auth: {
     googleClientId: DEFAULT_GOOGLE_CLIENT_ID,
     profile: null,
+    token: null,
     autoProvisionKey: false,
     provisionPath: "/api/extension/provision",
   },
