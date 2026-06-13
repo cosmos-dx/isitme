@@ -21,7 +21,13 @@ from brain_core.storage.mongo import make_motor_client
 
 
 class MongoGraphStore(GraphStore):
-    def __init__(self, uri: str, db_name: str, half_life_days: float = 30.0, client: Any | None = None):
+    def __init__(
+        self,
+        uri: str,
+        db_name: str,
+        half_life_days: float = 30.0,
+        client: Any | None = None,
+    ):
         self._uri = uri
         self._db_name = db_name
         self._half_life = half_life_days
@@ -168,7 +174,11 @@ class MongoGraphStore(GraphStore):
             edge.effective_weight = edge.weight
             return edge
         new_weight = reinforce(
-            existing["weight"], db.parse_iso(existing["last_seen"]), weight_delta, now, self._half_life
+            existing["weight"],
+            db.parse_iso(existing["last_seen"]),
+            weight_delta,
+            now,
+            self._half_life,
         )
         merged_attrs = {**(existing.get("attributes") or {}), **(attributes or {})}
         await self._edges.update_one(

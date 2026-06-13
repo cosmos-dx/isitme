@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>isitme — settings</title>
+    <link rel="stylesheet" href="options.css" />
+  </head>
+  <body>
+    <main class="wrap">
+      <header class="hdr">
+        <div class="brand"><span class="dot"></span> isitme settings</div>
+        <span id="savedNote" class="saved" hidden>saved</span>
+      </header>
+
+      <section class="card">
+        <h2>Connection</h2>
+        <label class="field">
+          <span>API base URL</span>
+          <input id="apiBaseUrl" type="url" placeholder="http://127.0.0.1:5050" />
+        </label>
+        <label class="field">
+          <span>API key (<code>X-API-Key</code>)</span>
+          <div class="row">
+            <input id="apiKey" type="password" placeholder="isme_…" autocomplete="off" />
+            <button id="toggleKey" class="btn btn-sm" type="button">show</button>
+            <button id="validateKey" class="btn btn-sm" type="button">Validate</button>
+          </div>
+        </label>
+        <p id="keyResult" class="hint"></p>
+        <p class="hint">
+          Paste a key minted from the dashboard (Settings → API keys), or sign in
+          with Google in the popup. The key is sent only to your API base URL.
+        </p>
+      </section>
+
+      <section class="card">
+        <h2>Capture</h2>
+        <div class="toggles">
+          <label class="toggle"><input type="checkbox" data-capture="visits" /> Page visits</label>
+          <label class="toggle"><input type="checkbox" data-capture="dwell" /> Dwell (active time)</label>
+          <label class="toggle"><input type="checkbox" data-capture="clicks" /> Clicks</label>
+          <label class="toggle"><input type="checkbox" data-capture="links" /> Link-trail</label>
+          <label class="toggle"><input type="checkbox" data-capture="searches" /> Searches</label>
+          <label class="toggle"><input type="checkbox" data-capture="llmChat" /> LLM chat prompts</label>
+          <label class="toggle"><input type="checkbox" data-capture="pageContent" /> Page content (text)</label>
+        </div>
+        <label class="toggle wide">
+          <input id="redactionEnabled" type="checkbox" /> Client-side redaction (passwords,
+          tokens, cards, SSNs)
+        </label>
+        <p class="hint">
+          LLM chat and page-content capture are off by default — they're the most
+          privacy-sensitive. Redaction is applied before anything leaves the browser.
+        </p>
+      </section>
+
+      <section class="card">
+        <h2>Sites</h2>
+        <label class="field">
+          <span>Allow list (one host pattern per line — if set, ONLY these are captured)</span>
+          <textarea id="allowList" rows="3" placeholder="example.com&#10;*.wikipedia.org"></textarea>
+        </label>
+        <label class="field">
+          <span>Deny list (never captured — wins over allow)</span>
+          <textarea id="denyList" rows="4" placeholder="*.bank&#10;accounts.google.com"></textarea>
+        </label>
+        <p class="hint">
+          Patterns match the host. <code>example.com</code> also matches subdomains;
+          use <code>*</code> as a wildcard (e.g. <code>login.*</code>, <code>*bank*</code>).
+        </p>
+      </section>
+
+      <section class="card">
+        <h2>Batching</h2>
+        <div class="row">
+          <label class="field small">
+            <span>Batch size</span>
+            <input id="maxBatchSize" type="number" min="1" max="500" />
+          </label>
+          <label class="field small">
+            <span>Flush interval (s)</span>
+            <input id="flushIntervalSec" type="number" min="5" max="3600" />
+          </label>
+          <label class="field small">
+            <span>Max offline queue</span>
+            <input id="maxQueueSize" type="number" min="50" max="100000" />
+          </label>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Google sign-in</h2>
+        <label class="field">
+          <span>OAuth client ID (web client; public, not the secret)</span>
+          <input id="googleClientId" type="text" placeholder="…apps.googleusercontent.com" />
+        </label>
+        <label class="toggle wide">
+          <input id="autoProvisionKey" type="checkbox" /> Auto-provision an API key on sign-in
+          (only if the Web API exposes a provisioning endpoint)
+        </label>
+        <label class="field">
+          <span>Provision endpoint path</span>
+          <input id="provisionPath" type="text" placeholder="/api/extension/provision" />
+        </label>
+        <p id="redirectHint" class="hint"></p>
+      </section>
+
+      <div class="actions">
+        <button id="saveBtn" class="btn btn-primary" type="button">Save settings</button>
+        <button id="resetBtn" class="btn" type="button">Reset to defaults</button>
+      </div>
+    </main>
+    <script src="options.js"></script>
+  </body>
+</html>

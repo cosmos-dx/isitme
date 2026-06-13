@@ -32,7 +32,6 @@ from __future__ import annotations
 from typing import Any
 
 import numpy as np
-from pymongo import ReplaceOne
 
 from brain_core.storage.base import VectorStore
 from brain_core.storage.mongo import make_motor_client
@@ -65,15 +64,13 @@ class MongoVectorStore(VectorStore):
     ) -> None:
         if not ids:
             return
-        ops = [
-            ReplaceOne(
+        # Upsert keyed on id (mirrors the chroma backend's upsert semantics).
+        for _id, emb, text, meta in zip(ids, embeddings, texts, metadatas, strict=False):
+            await self._coll.replace_one(
                 {"_id": _id},
                 {"_id": _id, "embedding": list(emb), "text": text, "metadata": meta},
                 upsert=True,
             )
-            for _id, emb, text, meta in zip(ids, embeddings, texts, metadatas, strict=False)
-        ]
-        await self._coll.bulk_write(ops, ordered=False)
 
     async def query(
         self, embedding: list[float], k: int = 5
@@ -99,7 +96,12 @@ class MongoVectorStore(VectorStore):
         top = np.argpartition(-scores, k - 1)[:k]
         top = top[np.argsort(-scores[top])]
         return [
-            (docs[i]["_id"], float(scores[i]), docs[i].get("text", ""), docs[i].get("metadata") or {})
+            (
+                docs[i]["_id"],
+                float(scores[i]),
+                docs[i].get("text", ""),
+                docs[i].get("metadata") or {},
+            )
             for i in top
         ]
 

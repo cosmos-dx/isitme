@@ -10,8 +10,6 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from pymongo import ReplaceOne
-
 from brain_core.models.events import EventType, RawEvent
 from brain_core.storage import db
 from brain_core.storage.base import EventStore
@@ -38,8 +36,9 @@ class MongoEventStore(EventStore):
     async def append(self, events: list[RawEvent]) -> int:
         if not events:
             return 0
-        ops = [
-            ReplaceOne(
+        # Idempotent re-ingest: replace_one(upsert) keyed on the event id.
+        for e in events:
+            await self._coll.replace_one(
                 {"_id": e.id},
                 {
                     "_id": e.id,
@@ -54,10 +53,7 @@ class MongoEventStore(EventStore):
                 },
                 upsert=True,
             )
-            for e in events
-        ]
-        await self._coll.bulk_write(ops, ordered=False)
-        return len(ops)
+        return len(events)
 
     @staticmethod
     def _to_event(doc: dict[str, Any]) -> RawEvent:
