@@ -26,7 +26,7 @@ function relativeTime(iso: string | null): string {
 }
 
 function render(status: StatusResponse): void {
-  const { config, profile, stats, runtime } = status;
+  const { config, profile, auth, stats, runtime } = status;
 
   // pause pill + toggle button
   const pill = $("pausePill");
@@ -75,14 +75,14 @@ function render(status: StatusResponse): void {
     ? `${relativeTime(runtime.lastSyncAt)}${runtime.lastSyncOk ? "" : " (failed)"}`
     : "never";
   const keyState = $("keyState");
-  if (!config.hasApiKey) {
-    keyState.textContent = "not set";
-  } else if (runtime.apiKeyValid === true) {
-    keyState.textContent = "valid";
-  } else if (runtime.apiKeyValid === false) {
-    keyState.textContent = "invalid";
+  if (auth.signedIn) {
+    keyState.textContent = "Google · signed in";
+  } else if (auth.tokenExpired) {
+    keyState.textContent = "session expired — sign in";
+  } else if (auth.usingLegacyKey) {
+    keyState.textContent = "legacy API key";
   } else {
-    keyState.textContent = "set";
+    keyState.textContent = "not signed in";
   }
 
   const errorRow = $("errorRow");
