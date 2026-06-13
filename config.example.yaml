@@ -75,14 +75,16 @@ embedding:
 
 # --- Storage backends (swap-in for scale) -----------------------------------
 storage:
-  event_backend: "sqlite"           # sqlite (default) | postgres
-  graph_backend: "sqlite"           # sqlite (default) | neo4j | kuzu
-  vector_backend: "numpy"           # numpy (default) | chroma | qdrant | pgvector
+  event_backend: "sqlite"           # sqlite (default) | postgres | mongodb
+  graph_backend: "sqlite"           # sqlite (default) | neo4j | kuzu | mongodb
+  vector_backend: "numpy"           # numpy (default) | chroma | qdrant | pgvector | mongodb
   # Used only by non-default backends:
   postgres_dsn: null                # e.g. postgresql+asyncpg://user:pass@host/db
   chroma_path: null
   qdrant_url: null
   neo4j_uri: null
+  mongo_uri: "mongodb://localhost:27017"
+  mongo_db: "isitme"
 
 # --- Knowledge-graph dynamics ----------------------------------------------
 graph:

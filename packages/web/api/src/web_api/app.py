@@ -234,9 +234,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         using_existing = False
         if mint:
             generated = generate_api_key()
-            meta = await repository.create_api_key(
-                request.app.state.engine, user["id"], name, generated
-            )
+            meta = await request.app.state.store.create_api_key(user["id"], name, generated)
             embedded_key = generated.plaintext
             prefix = meta["prefix"]
         elif key:
@@ -253,13 +251,51 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             instructions=mcp_config.build_instructions(settings.brain_public_url),
         )
 
-    # --- brain proxy --------------------------------------------------------
+    # --- brain proxy (session OR X-API-Key) ---------------------------------
+    @app.post("/api/ingest")
+    async def api_ingest(
+        body: IngestRequest,
+        request: Request,
+        brain: BrainClient = Depends(get_brain),
+        user: dict[str, Any] = Depends(require_auth),
+    ) -> dict:
+        result = await proxy_brain(brain.ingest(body.model_dump()))
+        await request.app.state.store.record_usage(user["id"], "ingest")
+        return result
+
+    @app.post("/api/log")
+    async def api_log(
+        event: dict[str, Any],
+        request: Request,
+        brain: BrainClient = Depends(get_brain),
+        user: dict[str, Any] = Depends(require_auth),
+    ) -> dict:
+        result = await proxy_brain(brain.log_one(event))
+        await request.app.state.store.record_usage(user["id"], "log")
+        return result
+
+    @app.post("/api/recall")
+    async def api_recall(
+        body: QueryRequest,
+        brain: BrainClient = Depends(get_brain),
+        _: dict[str, Any] = Depends(require_auth),
+    ) -> dict:
+        return await proxy_brain(brain.recall(body.query, body.k))
+
+    @app.post("/api/search")
+    async def api_search(
+        body: QueryRequest,
+        brain: BrainClient = Depends(get_brain),
+        _: dict[str, Any] = Depends(require_auth),
+    ) -> dict:
+        return await proxy_brain(brain.search_memory(body.query, body.k))
+
     @app.get("/api/graph")
     async def api_graph(
         node_limit: int = Query(default=1500, ge=1, le=5000),
         edge_limit: int = Query(default=4000, ge=1, le=20000),
         brain: BrainClient = Depends(get_brain),
-        _: dict[str, Any] = Depends(require_user),
+        _: dict[str, Any] = Depends(require_auth),
     ) -> dict:
         raw = await proxy_brain(brain.graph(node_limit, edge_limit))
         return _shape_force_graph(raw)
@@ -267,14 +303,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/api/stats")
     async def api_stats(
         brain: BrainClient = Depends(get_brain),
-        _: dict[str, Any] = Depends(require_user),
+        _: dict[str, Any] = Depends(require_auth),
     ) -> dict:
         return await proxy_brain(brain.stats())
 
     @app.get("/api/profile")
     async def api_profile(
         brain: BrainClient = Depends(get_brain),
-        _: dict[str, Any] = Depends(require_user),
+        _: dict[str, Any] = Depends(require_auth),
     ) -> dict:
         return await proxy_brain(brain.profile())
 
@@ -283,7 +319,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         body: AskRequest,
         brain: BrainClient = Depends(get_brain),
         llm: LLMHelper = Depends(get_llm),
-        _: dict[str, Any] = Depends(require_user),
+        _: dict[str, Any] = Depends(require_auth),
     ) -> dict:
         result = await proxy_brain(brain.ask(body.question, body.k))
         synthesized = await llm.synthesize_answer(
@@ -299,7 +335,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/api/extension/usage")
     async def api_extension_usage(
         brain: BrainClient = Depends(get_brain),
-        _: dict[str, Any] = Depends(require_user),
+        _: dict[str, Any] = Depends(require_auth),
     ) -> dict:
         stats = await proxy_brain(brain.stats())
         # Brain has no per-event-category counter; approximate a breakdown from

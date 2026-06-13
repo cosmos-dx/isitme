@@ -6,6 +6,7 @@
 # in production-grade backends (set storage.* in config.yaml accordingly).
 #
 #   docker compose up -d postgres qdrant neo4j
+#   docker compose up -d mongodb          # one service for brain + web API
 # =============================================================================
 services:
   postgres:
@@ -41,7 +42,21 @@ services:
       - neo4jdata:/data
     # Then set: storage.graph_backend=neo4j, storage.neo4j_uri=bolt://localhost:7687
 
+  # MongoDB — one service backs BOTH the brain-core stores and the web API.
+  #   docker compose up -d mongodb
+  # Core Brain  : storage.event_backend/graph_backend/vector_backend = "mongodb"
+  #               storage.mongo_uri = mongodb://localhost:27017 (default)
+  #               storage.mongo_db  = isitme
+  # Web API/BFF : WEB_MONGO_URI=mongodb://localhost:27017  WEB_MONGO_DB=isitme
+  mongodb:
+    image: mongo:7
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodata:/data/db
+
 volumes:
   pgdata:
   qdrantdata:
   neo4jdata:
+  mongodata:

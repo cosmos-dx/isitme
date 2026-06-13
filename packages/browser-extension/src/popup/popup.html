@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>isitme</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <header class="hdr">
+      <div class="brand">
+        <span class="dot"></span>
+        <span>isitme</span>
+      </div>
+      <span id="pausePill" class="pill">active</span>
+    </header>
+
+    <section id="account" class="account">
+      <img id="avatar" class="avatar" alt="" hidden />
+      <div class="account-text">
+        <div id="accountName" class="account-name">Not signed in</div>
+        <div id="accountEmail" class="account-email muted"></div>
+      </div>
+      <button id="authBtn" class="btn btn-sm">Sign in</button>
+    </section>
+
+    <section class="stats">
+      <div class="stat">
+        <div id="eventsToday" class="stat-num">·</div>
+        <div class="stat-label">events today</div>
+      </div>
+      <div class="stat">
+        <div id="queueLen" class="stat-num">·</div>
+        <div class="stat-label">queued</div>
+      </div>
+    </section>
+
+    <div id="breakdown" class="breakdown"></div>
+
+    <section class="meta">
+      <div class="meta-row">
+        <span class="muted">Last sync</span>
+        <span id="lastSync">never</span>
+      </div>
+      <div class="meta-row">
+        <span class="muted">API key</span>
+        <span id="keyState">—</span>
+      </div>
+      <div id="errorRow" class="meta-row error" hidden>
+        <span class="muted">Error</span>
+        <span id="errorText"></span>
+      </div>
+    </section>
+
+    <section class="actions">
+      <button id="toggleBtn" class="btn btn-primary">Pause capture</button>
+      <button id="flushBtn" class="btn">Sync now</button>
+    </section>
+
+    <footer class="foot">
+      <a id="optionsLink" href="#">Settings</a>
+      <span id="baseUrl" class="muted"></span>
+    </footer>
+
+    <script src="popup.js"></script>
+  </body>
+</html>

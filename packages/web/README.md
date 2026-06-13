@@ -120,11 +120,29 @@ If you see `redirect_uri_mismatch`, the ports above don't match — keep 4000/50
 - `GET  /auth/google/login` → redirect to Google
 - `GET  /auth/google/callback` → sets session, redirects to `/dashboard`
 - `GET  /auth/me`, `POST /auth/logout`
-- `POST /api/keys`, `GET /api/keys`, `DELETE /api/keys/{id}`
+- `POST /api/keys`, `GET /api/keys`, `DELETE /api/keys/{id}` *(session only)*
+- `GET  /api/keys/validate` *(`X-API-Key` only)* → `{valid, user}`
 - `GET  /api/mcp-config` (`?mint=true` to embed a fresh key once)
 - `GET  /api/graph`, `GET /api/stats`, `GET /api/profile`, `POST /api/ask`
+- `POST /api/ingest`, `POST /api/log`, `POST /api/recall`, `POST /api/search`
 - `GET  /api/extension/usage`
 - `GET  /healthz`
 
+### Auth contract
+
+Every `/api/*` data endpoint accepts **either** a browser **session cookie**
+**or** a header **`X-API-Key: <plaintext>`** (so MCP and the browser extension
+can use them). Keys are stored only as a SHA-256 hash (never plaintext); the
+hash is matched, the user resolved, and `last_used` updated on each call. CORS
+allows `http://localhost:4000` (credentials) and `chrome-extension://*`, and
+permits the `X-API-Key` header. Full table + shapes: `packages/web/api/README.md`.
+
 The dashboard's 3D graph is sourced from the brain's read-only
 `GET /v1/graph` (added to `brain-core`), reshaped for `react-force-graph`.
+
+### Storage (SQLite default, MongoDB opt-in)
+
+Both the Core Brain and the Web API run on SQLite/numpy with **zero services**.
+To opt into MongoDB: `docker compose up -d mongodb`, then set the brain's
+`storage.*_backend: mongodb` (config/env) and the web API's `WEB_MONGO_URI`.
+Details: `packages/brain-core/README.md` and `packages/web/api/README.md`.
