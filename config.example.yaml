@@ -1,0 +1,105 @@
+# =============================================================================
+# isitme — Central Brain configuration (example)
+#
+# Copy to `config.yaml` and edit. Every value has a safe local-first default,
+# so the system runs with ZERO network/cloud/API keys out of the box.
+#
+# Load order: this YAML file (path via BRAIN_CONFIG env var, default
+# ./config.yaml if present) is merged with environment variables prefixed
+# `BRAIN_` (nested keys use `__`, e.g. BRAIN_SERVER__PORT=9000).
+# =============================================================================
+
+# Where all local state lives (event DB, graph DB, vectors, outbox).
+data_dir: "./.brain"
+
+# local | cloud_sync
+#   local       -> everything stays on this machine.
+#   cloud_sync  -> outbox is additionally drained (encrypted) to `cloud`.
+mode: "local"
+
+server:
+  host: "127.0.0.1"
+  port: 8077
+
+# --- What we capture --------------------------------------------------------
+capture:
+  # Per-category toggles. Disable a category to drop those events at ingest.
+  categories:
+    visit: true
+    click: true
+    dwell: true
+    link: true
+    search: true
+    llm_chat: true
+    content_create: true
+    opinion: true
+  # Capture full page text / form inputs (still passes through redaction).
+  capture_page_content: true
+  capture_form_inputs: false        # off by default; sensitive
+  # Per-site rules. deny wins over allow. Empty allow_sites = allow all.
+  allow_sites: []                   # e.g. ["github.com", "arxiv.org"]
+  deny_sites:                       # never capture these
+    - "*.bank.com"
+    - "accounts.google.com"
+    - "*.health*"
+  # Retention window in days. Events older than this are pruned (0 = keep all).
+  retention_days: 365
+
+# --- Redaction (runs BEFORE anything is stored) -----------------------------
+redaction:
+  enabled: true
+  # Built-in category detectors to scrub from content/url/title.
+  categories:
+    passwords: true
+    banking: true
+    health: true
+    secrets: true                   # api keys, tokens, private keys
+    pii: true                       # emails, phone numbers, credit cards, SSN
+  # Extra user regexes; matched substrings are replaced with `replacement`.
+  custom_patterns:
+    - name: "internal-ticket"
+      pattern: "INTERNAL-\\d+"
+  # Site-specific: drop ALL content for these domains (metadata only kept).
+  content_blocklist_sites:
+    - "*.bank.com"
+  replacement: "[REDACTED]"
+
+# --- Embeddings -------------------------------------------------------------
+embedding:
+  # hashing | sentence_transformers | openai
+  provider: "hashing"               # deterministic, zero-dependency default
+  dim: 256                          # used by the hashing provider
+  st_model: "all-MiniLM-L6-v2"      # used when provider=sentence_transformers
+  openai_model: "text-embedding-3-small"
+  openai_api_key: null              # or set BRAIN_EMBEDDING__OPENAI_API_KEY
+
+# --- Storage backends (swap-in for scale) -----------------------------------
+storage:
+  event_backend: "sqlite"           # sqlite (default) | postgres
+  graph_backend: "sqlite"           # sqlite (default) | neo4j | kuzu
+  vector_backend: "numpy"           # numpy (default) | chroma | qdrant | pgvector
+  # Used only by non-default backends:
+  postgres_dsn: null                # e.g. postgresql+asyncpg://user:pass@host/db
+  chroma_path: null
+  qdrant_url: null
+  neo4j_uri: null
+
+# --- Knowledge-graph dynamics ----------------------------------------------
+graph:
+  # Half-life (days) for edge weights. Effective weight decays exponentially
+  # between observations; each new observation re-strengthens the edge.
+  edge_half_life_days: 30.0
+  # Default weight increment applied each time an edge is observed.
+  default_edge_weight: 1.0
+  # Max topics extracted per content event.
+  max_topics_per_event: 8
+
+# --- Optional cloud sync (only used when mode=cloud_sync) -------------------
+cloud:
+  endpoint: null                    # e.g. https://brain.example.com
+  api_key: null
+  # Fernet key for at-rest encryption of synced payloads. If null and sync is
+  # enabled, an ephemeral key is generated under data_dir (printed once).
+  encryption_key: null
+  sync_interval_seconds: 30
+  batch_size: 100

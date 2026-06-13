@@ -1,0 +1,56 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "brain-core"
+version = "0.1.0"
+description = "isitme Core Brain — local-first personal cognition layer (event store, knowledge graph, vector memory, insight engine, FastAPI)."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "isitme" }]
+dependencies = [
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.29",
+    "pydantic>=2.6",
+    "pydantic-settings>=2.2",
+    "sqlalchemy[asyncio]>=2.0",
+    "aiosqlite>=0.19",
+    "greenlet>=3.0",
+    "httpx>=0.27",
+    "pyyaml>=6.0",
+    "numpy>=1.26",
+    "cryptography>=42.0",
+]
+
+[project.optional-dependencies]
+# Heavier / optional backends — never required for the local default path.
+embeddings = ["sentence-transformers>=2.6"]
+openai = ["openai>=1.20"]
+chroma = ["chromadb>=0.5"]
+postgres = ["asyncpg>=0.29"]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "ruff>=0.4",
+]
+
+[project.scripts]
+brain = "brain_core.__main__:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/brain_core"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["src"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "W"]
+ignore = ["B008"]  # FastAPI Depends() in defaults is idiomatic

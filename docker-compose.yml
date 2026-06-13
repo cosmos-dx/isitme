@@ -1,0 +1,47 @@
+# =============================================================================
+# OPTIONAL scalable backend stack for isitme.
+#
+# The default local-first setup needs NONE of this — SQLite + numpy vectors
+# run in-process with zero services. Bring this up only when you want to swap
+# in production-grade backends (set storage.* in config.yaml accordingly).
+#
+#   docker compose up -d postgres qdrant neo4j
+# =============================================================================
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: brain
+      POSTGRES_PASSWORD: brain
+      POSTGRES_DB: brain
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    # Then set: storage.event_backend=postgres, storage.postgres_dsn=
+    #   postgresql+asyncpg://brain:brain@localhost:5432/brain
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrantdata:/qdrant/storage
+    # Then set: storage.vector_backend=qdrant, storage.qdrant_url=http://localhost:6333
+
+  neo4j:
+    image: neo4j:5
+    environment:
+      NEO4J_AUTH: neo4j/brainbrain
+    ports:
+      - "7474:7474"
+      - "7687:7687"
+    volumes:
+      - neo4jdata:/data
+    # Then set: storage.graph_backend=neo4j, storage.neo4j_uri=bolt://localhost:7687
+
+volumes:
+  pgdata:
+  qdrantdata:
+  neo4jdata:

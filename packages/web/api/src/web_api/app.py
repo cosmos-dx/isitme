@@ -1,0 +1,356 @@
+"""FastAPI app factory for the Web API / BFF (port 5050).
+
+Responsibilities:
+  * Google OAuth 2.0 login -> signed session cookie usable by the :4000 frontend.
+  * API-key management (create/list/revoke; plaintext shown once, only hash stored).
+  * MCP config generator for Cursor / Claude.
+  * Read-only proxy over the Core Brain for the dashboard (graph, stats, profile,
+    ask, extension usage).
+"""
+
+from __future__ import annotations
+
+import logging
+from collections import Counter
+from contextlib import asynccontextmanager
+from typing import Any
+
+from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import RedirectResponse
+from starlette.middleware.sessions import SessionMiddleware
+
+from web_api import db, mcp_config, repository
+from web_api.brain_client import BrainClient
+from web_api.config import Settings, get_settings
+from web_api.llm import LLMHelper
+from web_api.models import (
+    ApiKeyCreatedOut,
+    ApiKeyOut,
+    AskRequest,
+    CreateKeyRequest,
+    McpConfigResponse,
+    MeResponse,
+    UserOut,
+)
+from web_api.oauth import build_oauth
+from web_api.security import generate_api_key
+
+logger = logging.getLogger("web.api")
+
+
+def create_app(settings: Settings | None = None) -> FastAPI:
+    settings = settings or get_settings()
+
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        engine = db.make_engine(settings.db_url)
+        await db.create_all(engine)
+        app.state.engine = engine
+        app.state.brain = BrainClient(settings.brain_base_url)
+        app.state.llm = LLMHelper(settings.openai_api_key)
+        app.state.oauth = build_oauth(settings)
+        logger.info(
+            "Web API ready (oauth=%s, brain=%s, openai=%s).",
+            settings.oauth_configured,
+            settings.brain_base_url,
+            app.state.llm.enabled,
+        )
+        try:
+            yield
+        finally:
+            await app.state.brain.close()
+            await engine.dispose()
+
+    app = FastAPI(
+        title="isitme — Web API",
+        version="0.1.0",
+        description="Local web BFF: Google OAuth, API keys, MCP config, brain proxy.",
+        lifespan=lifespan,
+    )
+
+    # Session cookie (signed). SameSite=Lax + same-site localhost lets the
+    # :4000 frontend send it on credentialed fetches and OAuth redirects.
+    app.add_middleware(
+        SessionMiddleware,
+        secret_key=settings.session_secret,
+        session_cookie=settings.session_cookie,
+        same_site="lax",
+        https_only=False,
+        max_age=60 * 60 * 24 * 14,
+    )
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=[settings.frontend_origin],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+    # --- dependencies -------------------------------------------------------
+    def get_engine(request: Request):
+        return request.app.state.engine
+
+    def get_brain(request: Request) -> BrainClient:
+        return request.app.state.brain
+
+    def get_llm(request: Request) -> LLMHelper:
+        return request.app.state.llm
+
+    async def current_user(request: Request) -> dict[str, Any] | None:
+        user_id = request.session.get("user_id")
+        if not user_id:
+            return None
+        return await repository.get_user(request.app.state.engine, user_id)
+
+    async def require_user(request: Request) -> dict[str, Any]:
+        user = await current_user(request)
+        if not user:
+            raise HTTPException(status_code=401, detail="Not authenticated")
+        return user
+
+    async def proxy_brain(coro):
+        try:
+            return await coro
+        except Exception as exc:  # httpx errors / brain offline
+            logger.warning("Brain proxy error: %s", exc)
+            raise HTTPException(status_code=502, detail="Core Brain unavailable") from exc
+
+    # --- health -------------------------------------------------------------
+    @app.get("/healthz")
+    async def healthz(brain: BrainClient = Depends(get_brain)) -> dict:
+        return {
+            "status": "ok",
+            "oauth_configured": settings.oauth_configured,
+            "brain_reachable": await brain.healthz(),
+        }
+
+    # --- auth ---------------------------------------------------------------
+    @app.get("/auth/google/login")
+    async def google_login(request: Request):
+        oauth = request.app.state.oauth
+        if not settings.oauth_configured or oauth is None:
+            raise HTTPException(status_code=503, detail="Google OAuth is not configured")
+        # Honor the redirect_uri pinned in OAUTH_CLIENT_JSON exactly.
+        return await oauth.google.authorize_redirect(request, settings.google.redirect_uri)
+
+    @app.get("/auth/google/callback")
+    async def google_callback(request: Request):
+        oauth = request.app.state.oauth
+        if not settings.oauth_configured or oauth is None:
+            raise HTTPException(status_code=503, detail="Google OAuth is not configured")
+        try:
+            token = await oauth.google.authorize_access_token(request)
+        except Exception as exc:
+            logger.warning("OAuth callback failed: %s", exc)
+            return RedirectResponse(f"{settings.frontend_origin}/?auth_error=1")
+        userinfo = token.get("userinfo") or {}
+        sub = userinfo.get("sub")
+        if not sub:
+            return RedirectResponse(f"{settings.frontend_origin}/?auth_error=1")
+        user_id = await repository.upsert_user(
+            request.app.state.engine,
+            google_sub=sub,
+            email=userinfo.get("email"),
+            name=userinfo.get("name"),
+            picture=userinfo.get("picture"),
+        )
+        request.session["user_id"] = user_id
+        return RedirectResponse(settings.dashboard_url)
+
+    @app.get("/auth/me", response_model=MeResponse)
+    async def auth_me(user: dict[str, Any] | None = Depends(current_user)) -> MeResponse:
+        if not user:
+            return MeResponse(authenticated=False)
+        return MeResponse(
+            authenticated=True,
+            user=UserOut(
+                id=user["id"],
+                email=user.get("email"),
+                name=user.get("name"),
+                picture=user.get("picture"),
+            ),
+        )
+
+    @app.post("/auth/logout")
+    async def logout(request: Request) -> dict:
+        request.session.clear()
+        return {"ok": True}
+
+    # --- API keys -----------------------------------------------------------
+    @app.post("/api/keys", response_model=ApiKeyCreatedOut)
+    async def create_key(
+        body: CreateKeyRequest,
+        request: Request,
+        user: dict[str, Any] = Depends(require_user),
+    ) -> ApiKeyCreatedOut:
+        generated = generate_api_key()
+        meta = await repository.create_api_key(
+            request.app.state.engine, user["id"], body.name, generated
+        )
+        return ApiKeyCreatedOut(**meta, key=generated.plaintext)
+
+    @app.get("/api/keys", response_model=list[ApiKeyOut])
+    async def list_keys(
+        request: Request, user: dict[str, Any] = Depends(require_user)
+    ) -> list[ApiKeyOut]:
+        rows = await repository.list_api_keys(request.app.state.engine, user["id"])
+        return [ApiKeyOut(**row) for row in rows]
+
+    @app.delete("/api/keys/{key_id}")
+    async def delete_key(
+        key_id: str, request: Request, user: dict[str, Any] = Depends(require_user)
+    ) -> dict:
+        ok = await repository.revoke_api_key(request.app.state.engine, user["id"], key_id)
+        if not ok:
+            raise HTTPException(status_code=404, detail="Key not found")
+        return {"ok": True, "id": key_id, "revoked": True}
+
+    # --- MCP config ---------------------------------------------------------
+    @app.get("/api/mcp-config", response_model=McpConfigResponse)
+    async def mcp_config_endpoint(
+        request: Request,
+        user: dict[str, Any] = Depends(require_user),
+        mint: bool = Query(default=False, description="Mint a new key and embed it once"),
+        name: str = Query(default="mcp"),
+        key: str | None = Query(default=None, description="Existing plaintext key to embed"),
+    ) -> McpConfigResponse:
+        embedded_key: str | None = None
+        prefix: str | None = None
+        using_existing = False
+        if mint:
+            generated = generate_api_key()
+            meta = await repository.create_api_key(
+                request.app.state.engine, user["id"], name, generated
+            )
+            embedded_key = generated.plaintext
+            prefix = meta["prefix"]
+        elif key:
+            embedded_key = key
+            prefix = key[:12]
+            using_existing = True
+        cfg = mcp_config.build_mcp_config(settings.brain_public_url, embedded_key)
+        return McpConfigResponse(
+            brain_url=settings.brain_public_url,
+            api_key_prefix=prefix,
+            using_existing_key=using_existing,
+            config=cfg,
+            snippet=mcp_config.build_snippet(cfg),
+            instructions=mcp_config.build_instructions(settings.brain_public_url),
+        )
+
+    # --- brain proxy --------------------------------------------------------
+    @app.get("/api/graph")
+    async def api_graph(
+        node_limit: int = Query(default=1500, ge=1, le=5000),
+        edge_limit: int = Query(default=4000, ge=1, le=20000),
+        brain: BrainClient = Depends(get_brain),
+        _: dict[str, Any] = Depends(require_user),
+    ) -> dict:
+        raw = await proxy_brain(brain.graph(node_limit, edge_limit))
+        return _shape_force_graph(raw)
+
+    @app.get("/api/stats")
+    async def api_stats(
+        brain: BrainClient = Depends(get_brain),
+        _: dict[str, Any] = Depends(require_user),
+    ) -> dict:
+        return await proxy_brain(brain.stats())
+
+    @app.get("/api/profile")
+    async def api_profile(
+        brain: BrainClient = Depends(get_brain),
+        _: dict[str, Any] = Depends(require_user),
+    ) -> dict:
+        return await proxy_brain(brain.profile())
+
+    @app.post("/api/ask")
+    async def api_ask(
+        body: AskRequest,
+        brain: BrainClient = Depends(get_brain),
+        llm: LLMHelper = Depends(get_llm),
+        _: dict[str, Any] = Depends(require_user),
+    ) -> dict:
+        result = await proxy_brain(brain.ask(body.question, body.k))
+        synthesized = await llm.synthesize_answer(
+            body.question,
+            result.get("sources", []),
+            result.get("profile_summary", ""),
+        )
+        if synthesized:
+            result["answer"] = synthesized
+            result["synthesized_by"] = "openai"
+        return result
+
+    @app.get("/api/extension/usage")
+    async def api_extension_usage(
+        brain: BrainClient = Depends(get_brain),
+        _: dict[str, Any] = Depends(require_user),
+    ) -> dict:
+        stats = await proxy_brain(brain.stats())
+        # Brain has no per-event-category counter; approximate a breakdown from
+        # the knowledge-graph node types, which mirror what the extension feeds.
+        by_category: dict[str, int] = {}
+        try:
+            graph = await brain.graph(node_limit=2000, edge_limit=1)
+            by_category = dict(Counter(n.get("type", "unknown") for n in graph.get("nodes", [])))
+        except Exception:  # best-effort enrichment
+            by_category = {}
+        return {
+            "events_captured": stats.get("events", 0),
+            "nodes": stats.get("nodes", 0),
+            "edges": stats.get("edges", 0),
+            "memories": stats.get("memories", 0),
+            "mode": stats.get("mode"),
+            "embedding_provider": stats.get("embedding_provider"),
+            "by_category": by_category,
+            # Not tracked by the brain yet; surfaced as null so the UI can label it.
+            "last_sync": None,
+            "active_days": None,
+        }
+
+    return app
+
+
+_TYPE_COLORS = {
+    "user": "#f5f5f5",
+    "domain": "#7c5cff",
+    "url": "#4f8cff",
+    "topic": "#22d3ee",
+    "query": "#34d399",
+    "llm": "#f59e0b",
+    "opinion": "#f472b6",
+    "document": "#a78bfa",
+    "person": "#fb7185",
+}
+
+
+def _shape_force_graph(raw: dict[str, Any]) -> dict[str, Any]:
+    """Reshape brain nodes/edges into react-force-graph ``{nodes, links}``."""
+    nodes = []
+    for n in raw.get("nodes", []):
+        weight = float(n.get("weight", 0.0) or 0.0)
+        node_type = n.get("type", "unknown")
+        nodes.append(
+            {
+                "id": n["id"],
+                "label": n.get("label", ""),
+                "type": node_type,
+                "weight": round(weight, 3),
+                "val": max(1.0, weight),
+                "color": _TYPE_COLORS.get(node_type, "#9ca3af"),
+                "attributes": n.get("attributes", {}),
+            }
+        )
+    links = []
+    for e in raw.get("edges", []):
+        eff = e.get("effective_weight")
+        links.append(
+            {
+                "source": e["src"],
+                "target": e["dst"],
+                "relation": e.get("relation", ""),
+                "weight": round(float(eff if eff is not None else e.get("weight", 0.0)), 3),
+            }
+        )
+    return {"nodes": nodes, "links": links}

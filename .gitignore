@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+.env
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Local brain data (never commit personal data!)
+*.db
+*.sqlite
+*.sqlite3
+data/
+.brain/
+config.yaml
+config.local.yaml
+*.key
+secrets/
+
+# Node / extension
+node_modules/
+packages/browser-extension/dist/
+*.tsbuildinfo
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+*.log
