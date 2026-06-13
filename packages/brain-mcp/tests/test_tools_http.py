@@ -1,8 +1,9 @@
-"""HTTP-layer tests: each tool hits the right endpoint with the X-API-Key header.
+"""HTTP-layer tests: each tool hits the right endpoint with a Bearer token.
 
 The Web API is mocked with ``respx``; we drive the tools through the real
 FastMCP ``call_tool`` path so the server -> client -> httpx wiring is exercised
-end to end (minus the network).
+end to end (minus the network). The token layer is mocked with a trivial async
+provider so no real Google login is involved.
 """
 
 from __future__ import annotations
@@ -21,13 +22,17 @@ from brain_mcp.config import BrainMCPConfig
 from brain_mcp.server import build_server
 
 API_BASE = "http://brain.test:5050"
-API_KEY = "isme_unit_test_key"
+ID_TOKEN = "fake.id.token"
+
+
+async def _provider() -> str:
+    return ID_TOKEN
 
 
 @pytest.fixture
 async def server_and_client():
-    cfg = BrainMCPConfig(api_key=API_KEY, api_base=API_BASE)
-    client = BrainClient(API_BASE, API_KEY)
+    cfg = BrainMCPConfig(api_base=API_BASE)
+    client = BrainClient(API_BASE, _provider)
     server = build_server(cfg, client=client)
     try:
         yield server, client
@@ -40,7 +45,7 @@ def _assert_authed(route: respx.Route, method: str, path: str) -> httpx.Request:
     request = route.calls.last.request
     assert request.method == method
     assert request.url.path == path
-    assert request.headers.get("x-api-key") == API_KEY
+    assert request.headers.get("authorization") == f"Bearer {ID_TOKEN}"
     return request
 
 
@@ -137,26 +142,50 @@ async def test_get_stats(server_and_client) -> None:
 
 
 @respx.mock
-async def test_validate_key_hits_endpoint_with_header() -> None:
-    route = respx.get(f"{API_BASE}/api/keys/validate").mock(
-        return_value=httpx.Response(200, json={"valid": True})
+async def test_whoami_hits_auth_me_with_bearer() -> None:
+    route = respx.get(f"{API_BASE}/auth/me").mock(
+        return_value=httpx.Response(
+            200, json={"authenticated": True, "user": {"id": "u1", "email": "x@y.z"}}
+        )
     )
-    async with BrainClient(API_BASE, API_KEY) as client:
-        result = await client.validate_key()
-    assert result == {"valid": True}
+    async with BrainClient(API_BASE, _provider) as client:
+        result = await client.whoami()
+    assert result["authenticated"] is True
     request = route.calls.last.request
-    assert request.headers.get("x-api-key") == API_KEY
+    assert request.headers.get("authorization") == f"Bearer {ID_TOKEN}"
+
+
+@respx.mock
+async def test_whoami_unauthenticated_maps_to_auth_error() -> None:
+    respx.get(f"{API_BASE}/auth/me").mock(
+        return_value=httpx.Response(200, json={"authenticated": False})
+    )
+    async with BrainClient(API_BASE, _provider) as client:
+        with pytest.raises(BrainAuthError):
+            await client.whoami()
 
 
 # --- error mapping ---------------------------------------------------------
 @respx.mock
-async def test_invalid_key_maps_to_auth_error() -> None:
-    respx.get(f"{API_BASE}/api/keys/validate").mock(
-        return_value=httpx.Response(401, json={"detail": "invalid key"})
+async def test_rejected_token_maps_to_auth_error() -> None:
+    respx.get(f"{API_BASE}/api/stats").mock(
+        return_value=httpx.Response(401, json={"detail": "Not authenticated"})
     )
-    async with BrainClient(API_BASE, API_KEY) as client:
+    async with BrainClient(API_BASE, _provider) as client:
         with pytest.raises(BrainAuthError):
-            await client.validate_key()
+            await client.stats()
+
+
+async def test_missing_login_maps_to_auth_error() -> None:
+    from brain_mcp.auth import NotAuthenticatedError
+
+    async def _no_creds() -> str:
+        raise NotAuthenticatedError("run: python -m brain_mcp login")
+
+    async with BrainClient(API_BASE, _no_creds) as client:
+        with pytest.raises(BrainAuthError) as excinfo:
+            await client.stats()
+    assert "login" in str(excinfo.value)
 
 
 @respx.mock
@@ -164,7 +193,7 @@ async def test_brain_unreachable_maps_to_unreachable_error() -> None:
     respx.post(f"{API_BASE}/api/recall").mock(
         side_effect=httpx.ConnectError("connection refused")
     )
-    async with BrainClient(API_BASE, API_KEY) as client:
+    async with BrainClient(API_BASE, _provider) as client:
         with pytest.raises(BrainUnreachableError):
             await client.recall("anything")
 
@@ -174,7 +203,7 @@ async def test_server_error_maps_to_response_error() -> None:
     respx.get(f"{API_BASE}/api/stats").mock(
         return_value=httpx.Response(500, json={"detail": "boom"})
     )
-    async with BrainClient(API_BASE, API_KEY) as client:
+    async with BrainClient(API_BASE, _provider) as client:
         with pytest.raises(BrainResponseError) as excinfo:
             await client.stats()
     assert excinfo.value.status_code == 500

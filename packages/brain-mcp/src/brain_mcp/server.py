@@ -17,6 +17,7 @@ from typing import Annotated, Any
 from mcp.server.fastmcp import FastMCP
 from pydantic import Field
 
+from brain_mcp.auth import TokenProvider
 from brain_mcp.client import BrainClient
 from brain_mcp.config import BrainMCPConfig
 
@@ -38,7 +39,8 @@ back into the brain so it improves over time.
 - Call `get_stats` to gauge how much the brain currently knows.
 
 Prefer brain-grounded facts over assumptions. If a tool reports the brain is \
-unreachable or the API key is invalid, tell the user how to fix it rather than guessing.\
+unreachable or that authentication failed, tell the user how to fix it (start the \
+Web API, or run `python -m brain_mcp login`) rather than guessing.\
 """
 
 # Allowed event types for log_interaction, mirrored from brain_core.models.events.
@@ -76,8 +78,9 @@ def build_server(
     def get_client() -> BrainClient:
         existing = holder["client"]
         if existing is None:
+            provider = TokenProvider(config.credentials_path)
             existing = BrainClient(
-                config.api_base, config.api_key, timeout=config.timeout
+                config.api_base, provider.id_token, timeout=config.timeout
             )
             holder["client"] = existing
         return existing

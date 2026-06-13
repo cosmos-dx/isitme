@@ -4,7 +4,6 @@
       "command": "/Users/abhishekgupta/code/personal/isitme/packages/brain-mcp/.venv/bin/python",
       "args": ["-m", "brain_mcp"],
       "env": {
-        "BRAIN_API_KEY": "<YOUR_ISITME_API_KEY>",
         "BRAIN_API_BASE": "http://127.0.0.1:5050"
       }
     }

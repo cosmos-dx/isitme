@@ -24,7 +24,6 @@ EXPECTED_TOOLS = {
 
 def _clear_brain_env(monkeypatch: pytest.MonkeyPatch) -> None:
     for var in (
-        "BRAIN_API_KEY",
         "BRAIN_API_BASE",
         "BRAIN_BASE_URL",
         "BRAIN_API_TIMEOUT",
@@ -32,22 +31,24 @@ def _clear_brain_env(monkeypatch: pytest.MonkeyPatch) -> None:
         "BRAIN_MCP_HOST",
         "BRAIN_MCP_PORT",
         "BRAIN_MCP_SKIP_VALIDATION",
+        "BRAIN_CREDENTIALS_PATH",
+        "BRAIN_OAUTH_REDIRECT_PORT",
     ):
         monkeypatch.delenv(var, raising=False)
 
 
-def test_load_config_fails_fast_without_key(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_load_config_works_without_any_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    # No API key required anymore — auth is via the cached Google login.
     _clear_brain_env(monkeypatch)
-    with pytest.raises(ConfigError) as excinfo:
-        load_config(load_dotenv_files=False)
-    assert "BRAIN_API_KEY" in str(excinfo.value)
+    cfg = load_config(load_dotenv_files=False)
+    assert cfg.api_base == DEFAULT_API_BASE
+    assert cfg.transport == "stdio"
+    assert cfg.oauth_redirect_port == 8765
 
 
 def test_load_config_defaults_and_alias(monkeypatch: pytest.MonkeyPatch) -> None:
     _clear_brain_env(monkeypatch)
-    monkeypatch.setenv("BRAIN_API_KEY", "isme_test_key")
     cfg = load_config(load_dotenv_files=False)
-    assert cfg.api_key == "isme_test_key"
     assert cfg.api_base == DEFAULT_API_BASE
     assert cfg.transport == "stdio"
 
@@ -64,14 +65,13 @@ def test_load_config_defaults_and_alias(monkeypatch: pytest.MonkeyPatch) -> None
 
 def test_load_config_rejects_bad_transport(monkeypatch: pytest.MonkeyPatch) -> None:
     _clear_brain_env(monkeypatch)
-    monkeypatch.setenv("BRAIN_API_KEY", "isme_test_key")
     monkeypatch.setenv("BRAIN_MCP_TRANSPORT", "carrier-pigeon")
     with pytest.raises(ConfigError):
         load_config(load_dotenv_files=False)
 
 
 def _config() -> BrainMCPConfig:
-    return BrainMCPConfig(api_key="isme_test_key", api_base="http://brain.test:5050")
+    return BrainMCPConfig(api_base="http://brain.test:5050")
 
 
 async def test_all_tools_registered_with_schemas() -> None:

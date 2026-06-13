@@ -3,8 +3,10 @@
 Exposes your personal "central brain" (captured online behavior + knowledge
 graph + learned profile) to any MCP-capable LLM host (Cursor, Claude Desktop,
 etc.). The server is a thin, well-typed bridge: every tool calls the local Web
-API / BFF (default ``http://127.0.0.1:5050``) authenticated with your
-``X-API-Key``. No brain logic lives here.
+API / BFF (default ``http://127.0.0.1:5050``) authenticated with a Google OAuth
+token (``Authorization: Bearer <id_token>``), obtained once via
+``python -m brain_mcp login`` and refreshed automatically. No brain logic lives
+here.
 """
 
 from __future__ import annotations

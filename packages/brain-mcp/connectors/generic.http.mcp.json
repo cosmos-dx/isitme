@@ -1,5 +1,5 @@
 {
-  "_comment": "Optional Streamable HTTP transport. First run the server as a long-lived process: BRAIN_MCP_TRANSPORT=streamable-http BRAIN_API_KEY=... python -m brain_mcp  (listens on 127.0.0.1:8088). Then point an HTTP-capable MCP client at the URL below. Requires the 'http' extra: pip install -e '.[http]'.",
+  "_comment": "Optional Streamable HTTP transport. First sign in once (python -m brain_mcp login), then run the server as a long-lived process: BRAIN_MCP_TRANSPORT=streamable-http python -m brain_mcp  (listens on 127.0.0.1:8088). Then point an HTTP-capable MCP client at the URL below. Requires the 'http' extra: pip install -e '.[http]'.",
   "mcpServers": {
     "isitme-brain": {
       "url": "http://127.0.0.1:8088/mcp"
